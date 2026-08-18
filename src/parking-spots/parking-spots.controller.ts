@@ -21,7 +21,11 @@ export class ParkingSpotsController {
   create(@Body() dto: CreateParkingSpotDto, @Headers('x-user-id') ownerId?: string) {
     // El gateway ya verificó el JWT y manda el user_id en x-user-id para
     // rutas REQUIRED (ver gateway/app/proxy.py). Si falta, alguien le está
-    // pegando directo a este servicio sin pasar por el gateway.
+    // pegando directo a este servicio sin pasar por el gateway -- fallamos
+    // fuerte en vez de crear una cochera con un owner random inservible
+    // (Santiago había resuelto esto mismo con un fallback a uuidv4(); se
+    // prefiere fallar acá porque este servicio nunca se llama directo, sólo
+    // vía gateway).
     if (!ownerId) {
       throw new BadRequestException('Missing x-user-id header (request must go through the gateway).');
     }
