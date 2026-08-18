@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Post, Query } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
 import { ParkingSpotsService } from './parking-spots.service';
 import { SearchParkingSpotDto } from './dto/search-parking-spot.dto';
@@ -19,10 +19,14 @@ export class ParkingSpotsController {
   }
 
   @Post('parking-spots')
-  create(@Body() dto: CreateParkingSpotDto) {
-    // TODO: En producción, ownerId vendrá del JWT extraído por el middleware de auth-service
-    // Por ahora, generamos un UUID temporal para testing
-    const ownerId = uuidv4();
+  create(
+    @Body() dto: CreateParkingSpotDto,
+    @Headers('x-user-id') xUserId?: string,
+  ) {
+    // The gateway injects x-user-id after verifying the JWT (AuthMode.REQUIRED).
+    // Fall back to a random UUID only in local/testing environments where the
+    // gateway is not in front of this service.
+    const ownerId = xUserId ?? uuidv4();
     return this.parkingSpotsService.create(dto, ownerId);
   }
 
