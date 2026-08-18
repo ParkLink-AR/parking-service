@@ -1,5 +1,5 @@
-import { Type } from 'class-transformer';
-import { IsLatitude, IsLongitude, IsNumber, IsOptional, Min } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { IsBoolean, IsLatitude, IsLongitude, IsNumber, IsOptional, Min } from 'class-validator';
 
 export class SearchParkingSpotDto {
   @Type(() => Number)
@@ -22,4 +22,9 @@ export class SearchParkingSpotDto {
   @IsNumber()
   @Min(0)
   maxPrice?: number;
+
+  @IsOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
+  covered?: boolean;
 }

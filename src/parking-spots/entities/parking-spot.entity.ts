@@ -46,6 +46,14 @@ export class ParkingSpot {
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   pricePerHour!: number;
 
+  @Column({ default: false })
+  covered!: boolean;
+
+  // Texto libre (ej. "Lun a Vie, 8:00 a 22:00 hs"), tal como lo tipea el
+  // owner al publicar -- no hay un horario estructurado todavía.
+  @Column({ name: 'schedule_text', type: 'varchar', length: 255, nullable: true })
+  scheduleText!: string | null;
+
   @Column({ type: 'jsonb', nullable: true })
   photos!: string[];
 

@@ -1,5 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
-import { v4 as uuidv4 } from 'uuid';
+import { Body, Controller, Get, Headers, Param, Post, Query, BadRequestException } from '@nestjs/common';
 import { ParkingSpotsService } from './parking-spots.service';
 import { SearchParkingSpotDto } from './dto/search-parking-spot.dto';
 import { CreateParkingSpotDto } from './dto/create-parking-spot.dto';
@@ -19,10 +18,13 @@ export class ParkingSpotsController {
   }
 
   @Post('parking-spots')
-  create(@Body() dto: CreateParkingSpotDto) {
-    // TODO: En producción, ownerId vendrá del JWT extraído por el middleware de auth-service
-    // Por ahora, generamos un UUID temporal para testing
-    const ownerId = uuidv4();
+  create(@Body() dto: CreateParkingSpotDto, @Headers('x-user-id') ownerId?: string) {
+    // El gateway ya verificó el JWT y manda el user_id en x-user-id para
+    // rutas REQUIRED (ver gateway/app/proxy.py). Si falta, alguien le está
+    // pegando directo a este servicio sin pasar por el gateway.
+    if (!ownerId) {
+      throw new BadRequestException('Missing x-user-id header (request must go through the gateway).');
+    }
     return this.parkingSpotsService.create(dto, ownerId);
   }
 

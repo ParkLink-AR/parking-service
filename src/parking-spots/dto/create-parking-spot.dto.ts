@@ -1,4 +1,4 @@
-import { IsArray, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 
 export class CreateParkingSpotDto {
   @IsString()
@@ -15,6 +15,14 @@ export class CreateParkingSpotDto {
   @IsNumber()
   @Min(0)
   pricePerHour!: number;
+
+  @IsOptional()
+  @IsBoolean()
+  covered?: boolean;
+
+  @IsOptional()
+  @IsString()
+  scheduleText?: string;
 
   @IsOptional()
   @IsArray()
