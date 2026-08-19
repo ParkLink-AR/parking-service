@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { ParkingSpot, ParkingSpotStatus } from './entities/parking-spot.entity';
 import { SearchParkingSpotDto } from './dto/search-parking-spot.dto';
 import { CreateParkingSpotDto } from './dto/create-parking-spot.dto';
+import { UpdateParkingSpotDto } from './dto/update-parking-spot.dto';
 import { GeocodingService } from '../geocoding/geocoding.service';
 
 // The `geography` column doesn't come back usable from a plain find()/findOne()
@@ -155,6 +156,19 @@ export class ParkingSpotsService {
 
     const saved = await this.parkingSpotRepo.save(spot);
     return this.findById(saved.id);
+  }
+
+  async update(id: string, dto: UpdateParkingSpotDto): Promise<ParkingSpotResponse> {
+    const spot = await this.parkingSpotRepo.findOne({ where: { id } });
+    if (!spot) throw new NotFoundException('Cochera no encontrada');
+
+    if (dto.pricePerHour !== undefined) spot.pricePerHour = dto.pricePerHour;
+    if (dto.description !== undefined) spot.description = dto.description;
+    if (dto.covered !== undefined) spot.covered = dto.covered;
+    if (dto.scheduleText !== undefined) spot.scheduleText = dto.scheduleText;
+
+    await this.parkingSpotRepo.save(spot);
+    return this.findById(id);
   }
 
   async findAllByOwner(ownerId: string): Promise<ParkingSpotResponse[]> {
