@@ -1,11 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ParkingSpot, ParkingSpotStatus } from './entities/parking-spot.entity';
 import { SearchParkingSpotDto } from './dto/search-parking-spot.dto';
 import { CreateParkingSpotDto } from './dto/create-parking-spot.dto';
 import { UpdateParkingSpotDto } from './dto/update-parking-spot.dto';
-import { GeocodingService } from '../geocoding/geocoding.service';
 
 // The `geography` column doesn't come back usable from a plain find()/findOne()
 // (node-postgres returns raw EWKB for it) -- every read path goes through
@@ -81,7 +80,6 @@ export class ParkingSpotsService {
   constructor(
     @InjectRepository(ParkingSpot)
     private readonly parkingSpotRepo: Repository<ParkingSpot>,
-    private readonly geocodingService: GeocodingService,
   ) {}
 
   /**
@@ -133,11 +131,12 @@ export class ParkingSpotsService {
   }
 
   /**
-   * Crea una cochera geocodificando la dirección provista antes de guardar.
+   * Crea una cochera en las coordenadas provistas -- el mobile ya las
+   * resolvió antes de mandar esto (eligiendo una entre varias vía
+   * GET /geocode si el dueño tipeó una dirección, o el GPS del dispositivo
+   * si usó su ubicación actual), así que create() no vuelve a geocodificar.
    */
   async create(dto: CreateParkingSpotDto, ownerId: string): Promise<ParkingSpotResponse> {
-    const geocoded = await this.geocodingService.geocodeAddress(dto.address);
-
     const spot = this.parkingSpotRepo.create({
       title: dto.title,
       description: dto.description,
@@ -150,7 +149,7 @@ export class ParkingSpotsService {
       // GeoJSON format: TypeORM/PostGIS espera { type: 'Point', coordinates: [lng, lat] }
       location: {
         type: 'Point',
-        coordinates: [geocoded.lng, geocoded.lat],
+        coordinates: [dto.lng, dto.lat],
       },
     });
 
@@ -166,6 +165,16 @@ export class ParkingSpotsService {
     if (dto.description !== undefined) spot.description = dto.description;
     if (dto.covered !== undefined) spot.covered = dto.covered;
     if (dto.scheduleText !== undefined) spot.scheduleText = dto.scheduleText;
+
+    const changingLocation = dto.address !== undefined || dto.lat !== undefined || dto.lng !== undefined;
+    if (changingLocation) {
+      if (dto.address === undefined || dto.lat === undefined || dto.lng === undefined) {
+        throw new BadRequestException('address, lat and lng must all be provided together to change the location.');
+      }
+      spot.address = dto.address;
+      // GeoJSON format: TypeORM/PostGIS espera { type: 'Point', coordinates: [lng, lat] }
+      spot.location = { type: 'Point', coordinates: [dto.lng, dto.lat] };
+    }
 
     await this.parkingSpotRepo.save(spot);
     return this.findById(id);

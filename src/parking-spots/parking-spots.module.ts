@@ -3,10 +3,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ParkingSpot } from './entities/parking-spot.entity';
 import { ParkingSpotsService } from './parking-spots.service';
 import { ParkingSpotsController } from './parking-spots.controller';
-import { GeocodingModule } from '../geocoding/geocoding.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([ParkingSpot]), GeocodingModule],
+  imports: [TypeOrmModule.forFeature([ParkingSpot])],
   controllers: [ParkingSpotsController],
   providers: [ParkingSpotsService],
 })
