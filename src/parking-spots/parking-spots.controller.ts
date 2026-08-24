@@ -1,7 +1,8 @@
-import { Body, Controller, Get, Headers, Param, ParseUUIDPipe, Post, Query, BadRequestException } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, ParseUUIDPipe, Post, Put, Query, BadRequestException } from '@nestjs/common';
 import { ParkingSpotsService } from './parking-spots.service';
 import { SearchParkingSpotDto } from './dto/search-parking-spot.dto';
 import { CreateParkingSpotDto } from './dto/create-parking-spot.dto';
+import { UpdateParkingSpotDto } from './dto/update-parking-spot.dto';
 import { AvailabilityService } from '../availability/availability.service';
 import { AvailabilityQueryDto } from '../availability/dto/availability-query.dto';
 
@@ -40,6 +41,15 @@ export class ParkingSpotsController {
       throw new BadRequestException('Missing x-user-id header (request must go through the gateway).');
     }
     return this.parkingSpotsService.create(dto, ownerId);
+  }
+
+  @Put('parking-spots/:id')
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateParkingSpotDto,
+    @Headers('x-user-id') _userId?: string,
+  ) {
+    return this.parkingSpotsService.update(id, dto);
   }
 
   @Get('users/:id/parking-spots')

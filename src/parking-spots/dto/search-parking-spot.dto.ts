@@ -2,6 +2,10 @@ import { Transform, Type } from 'class-transformer';
 import { IsBoolean, IsLatitude, IsLongitude, IsNumber, IsOptional, Min } from 'class-validator';
 
 export class SearchParkingSpotDto {
+  // Mobile always resolves a free-text search to coordinates first (via
+  // GET /geocode, which shows the user every ambiguous match instead of
+  // guessing one) before calling this -- so search itself only ever deals
+  // in coordinates, never raw address strings.
   @Type(() => Number)
   @IsLatitude()
   lat!: number;
