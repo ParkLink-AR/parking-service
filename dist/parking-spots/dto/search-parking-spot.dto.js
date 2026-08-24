@@ -48,4 +48,14 @@ __decorate([
     (0, class_validator_1.IsBoolean)(),
     __metadata("design:type", Boolean)
 ], SearchParkingSpotDto.prototype, "covered", void 0);
+__decorate([
+    (0, class_validator_1.ValidateIf)((dto) => dto.from !== undefined || dto.to !== undefined),
+    (0, class_validator_1.IsISO8601)(),
+    __metadata("design:type", String)
+], SearchParkingSpotDto.prototype, "from", void 0);
+__decorate([
+    (0, class_validator_1.ValidateIf)((dto) => dto.from !== undefined || dto.to !== undefined),
+    (0, class_validator_1.IsISO8601)(),
+    __metadata("design:type", String)
+], SearchParkingSpotDto.prototype, "to", void 0);
 //# sourceMappingURL=search-parking-spot.dto.js.map
