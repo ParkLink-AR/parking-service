@@ -18,35 +18,88 @@ const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const parking_spot_entity_1 = require("./entities/parking-spot.entity");
 const geocoding_service_1 = require("../geocoding/geocoding.service");
+const BASE_COLUMNS = [
+    ['spot.id', 'id'],
+    ['spot.ownerId', 'ownerId'],
+    ['spot.title', 'title'],
+    ['spot.description', 'description'],
+    ['spot.address', 'address'],
+    ['spot.pricePerHour', 'pricePerHour'],
+    ['spot.covered', 'covered'],
+    ['spot.scheduleText', 'scheduleText'],
+    ['spot.photos', 'photos'],
+    ['spot.rules', 'rules'],
+    ['spot.status', 'status'],
+    ['spot.createdAt', 'createdAt'],
+    ['spot.updatedAt', 'updatedAt'],
+];
+function selectBaseColumns(qb) {
+    const [first, ...rest] = BASE_COLUMNS;
+    qb.select(first[0], first[1]);
+    for (const [column, alias] of rest)
+        qb.addSelect(column, alias);
+    return qb;
+}
+function toResponse(raw, distanceMeters) {
+    return {
+        id: raw.id,
+        ownerId: raw.ownerId,
+        title: raw.title,
+        description: raw.description,
+        address: raw.address,
+        lat: parseFloat(raw.lat),
+        lng: parseFloat(raw.lng),
+        pricePerHour: parseFloat(raw.pricePerHour),
+        covered: raw.covered,
+        scheduleText: raw.scheduleText,
+        photos: raw.photos ?? [],
+        rules: raw.rules ?? [],
+        status: raw.status,
+        createdAt: raw.createdAt,
+        updatedAt: raw.updatedAt,
+        ...(distanceMeters !== undefined ? { distanceMeters: Math.round(distanceMeters) } : {}),
+    };
+}
 let ParkingSpotsService = class ParkingSpotsService {
     constructor(parkingSpotRepo, geocodingService) {
         this.parkingSpotRepo = parkingSpotRepo;
         this.geocodingService = geocodingService;
     }
     async search(filters) {
-        const query = this.parkingSpotRepo
-            .createQueryBuilder('spot')
+        const origin = `ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography`;
+        const query = selectBaseColumns(this.parkingSpotRepo.createQueryBuilder('spot'))
+            .addSelect('ST_X(spot.location::geometry)', 'lng')
+            .addSelect('ST_Y(spot.location::geometry)', 'lat')
+            .addSelect(`ST_Distance(spot.location, ${origin})`, 'distanceM')
             .where('spot.status = :status', { status: parking_spot_entity_1.ParkingSpotStatus.ACTIVE })
-            .andWhere(`ST_DWithin(
-          spot.location,
-          ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography,
-          :radius
-        )`, { lat: filters.lat, lng: filters.lng, radius: filters.radius });
+            .andWhere(`ST_DWithin(spot.location, ${origin}, :radius)`, {
+            lat: filters.lat,
+            lng: filters.lng,
+            radius: filters.radius,
+        })
+            .orderBy('"distanceM"', 'ASC');
         if (filters.maxPrice !== undefined) {
             query.andWhere('spot.pricePerHour <= :maxPrice', {
                 maxPrice: filters.maxPrice,
             });
         }
-        return query.getMany();
+        if (filters.covered !== undefined) {
+            query.andWhere('spot.covered = :covered', { covered: filters.covered });
+        }
+        const raw = await query.getRawMany();
+        return raw.map((row) => toResponse(row, parseFloat(row.distanceM)));
     }
     async findById(id) {
-        const spot = await this.parkingSpotRepo.findOne({
-            where: { id, status: parking_spot_entity_1.ParkingSpotStatus.ACTIVE },
-        });
-        if (!spot) {
+        const raw = await selectBaseColumns(this.parkingSpotRepo.createQueryBuilder('spot'))
+            .addSelect('ST_X(spot.location::geometry)', 'lng')
+            .addSelect('ST_Y(spot.location::geometry)', 'lat')
+            .where('spot.id = :id', { id })
+            .andWhere('spot.status = :status', { status: parking_spot_entity_1.ParkingSpotStatus.ACTIVE })
+            .getRawOne();
+        if (!raw) {
             throw new common_1.NotFoundException('Cochera no encontrada');
         }
-        return spot;
+        return toResponse(raw);
     }
     async create(dto, ownerId) {
         const geocoded = await this.geocodingService.geocodeAddress(dto.address);
@@ -55,6 +108,8 @@ let ParkingSpotsService = class ParkingSpotsService {
             description: dto.description,
             address: dto.address,
             pricePerHour: dto.pricePerHour,
+            covered: dto.covered ?? false,
+            scheduleText: dto.scheduleText ?? null,
             rules: dto.rules ?? [],
             ownerId,
             location: {
@@ -62,13 +117,17 @@ let ParkingSpotsService = class ParkingSpotsService {
                 coordinates: [geocoded.lng, geocoded.lat],
             },
         });
-        return this.parkingSpotRepo.save(spot);
+        const saved = await this.parkingSpotRepo.save(spot);
+        return this.findById(saved.id);
     }
     async findAllByOwner(ownerId) {
-        return this.parkingSpotRepo.find({
-            where: { ownerId },
-            order: { createdAt: 'DESC' },
-        });
+        const raw = await selectBaseColumns(this.parkingSpotRepo.createQueryBuilder('spot'))
+            .addSelect('ST_X(spot.location::geometry)', 'lng')
+            .addSelect('ST_Y(spot.location::geometry)', 'lat')
+            .where('spot.ownerId = :ownerId', { ownerId })
+            .orderBy('spot.createdAt', 'DESC')
+            .getRawMany();
+        return raw.map((row) => toResponse(row));
     }
 };
 exports.ParkingSpotsService = ParkingSpotsService;

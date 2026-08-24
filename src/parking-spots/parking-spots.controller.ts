@@ -1,12 +1,17 @@
-import { Body, Controller, Get, Headers, Param, Post, Put, Query, BadRequestException } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, ParseUUIDPipe, Post, Put, Query, BadRequestException } from '@nestjs/common';
 import { ParkingSpotsService } from './parking-spots.service';
 import { SearchParkingSpotDto } from './dto/search-parking-spot.dto';
 import { CreateParkingSpotDto } from './dto/create-parking-spot.dto';
 import { UpdateParkingSpotDto } from './dto/update-parking-spot.dto';
+import { AvailabilityService } from '../availability/availability.service';
+import { AvailabilityQueryDto } from '../availability/dto/availability-query.dto';
 
 @Controller()
 export class ParkingSpotsController {
-  constructor(private readonly parkingSpotsService: ParkingSpotsService) {}
+  constructor(
+    private readonly parkingSpotsService: ParkingSpotsService,
+    private readonly availabilityService: AvailabilityService,
+  ) {}
 
   @Get('parking-spots/search')
   search(@Query() filters: SearchParkingSpotDto) {
@@ -16,6 +21,11 @@ export class ParkingSpotsController {
   @Get('parking-spots/:id')
   findById(@Param('id') id: string) {
     return this.parkingSpotsService.findById(id);
+  }
+
+  @Get('parking-spots/:id/availability')
+  getAvailability(@Param('id', ParseUUIDPipe) id: string, @Query() query: AvailabilityQueryDto) {
+    return this.availabilityService.getAvailability(id, query.from, query.to);
   }
 
   @Post('parking-spots')

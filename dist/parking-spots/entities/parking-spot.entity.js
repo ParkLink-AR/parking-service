@@ -55,6 +55,14 @@ __decorate([
     __metadata("design:type", Number)
 ], ParkingSpot.prototype, "pricePerHour", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ default: false }),
+    __metadata("design:type", Boolean)
+], ParkingSpot.prototype, "covered", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'schedule_text', type: 'varchar', length: 255, nullable: true }),
+    __metadata("design:type", Object)
+], ParkingSpot.prototype, "scheduleText", void 0);
+__decorate([
     (0, typeorm_1.Column)({ type: 'jsonb', nullable: true }),
     __metadata("design:type", Array)
 ], ParkingSpot.prototype, "photos", void 0);

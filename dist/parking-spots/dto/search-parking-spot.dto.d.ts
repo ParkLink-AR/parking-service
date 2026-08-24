@@ -3,4 +3,5 @@ export declare class SearchParkingSpotDto {
     lng: number;
     radius?: number;
     maxPrice?: number;
+    covered?: boolean;
 }
