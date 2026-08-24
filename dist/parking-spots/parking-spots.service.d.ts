@@ -1,8 +1,14 @@
 import { Repository } from 'typeorm';
 import { ParkingSpot, ParkingSpotStatus } from './entities/parking-spot.entity';
+import { ParkingSpotSchedule } from './entities/parking-spot-schedule.entity';
 import { SearchParkingSpotDto } from './dto/search-parking-spot.dto';
 import { CreateParkingSpotDto } from './dto/create-parking-spot.dto';
-import { GeocodingService } from '../geocoding/geocoding.service';
+import { UpdateParkingSpotDto } from './dto/update-parking-spot.dto';
+export interface ScheduleEntryResponse {
+    dayOfWeek: number;
+    startHour: number;
+    endHour: number;
+}
 export interface ParkingSpotResponse {
     id: string;
     ownerId: string;
@@ -13,7 +19,7 @@ export interface ParkingSpotResponse {
     lng: number;
     pricePerHour: number;
     covered: boolean;
-    scheduleText: string | null;
+    schedule: ScheduleEntryResponse[];
     photos: string[];
     rules: string[];
     status: ParkingSpotStatus;
@@ -23,10 +29,14 @@ export interface ParkingSpotResponse {
 }
 export declare class ParkingSpotsService {
     private readonly parkingSpotRepo;
-    private readonly geocodingService;
-    constructor(parkingSpotRepo: Repository<ParkingSpot>, geocodingService: GeocodingService);
+    private readonly scheduleRepo;
+    constructor(parkingSpotRepo: Repository<ParkingSpot>, scheduleRepo: Repository<ParkingSpotSchedule>);
+    private scheduleFor;
+    private scheduleForMany;
     search(filters: SearchParkingSpotDto): Promise<ParkingSpotResponse[]>;
     findById(id: string): Promise<ParkingSpotResponse>;
     create(dto: CreateParkingSpotDto, ownerId: string): Promise<ParkingSpotResponse>;
+    update(id: string, dto: UpdateParkingSpotDto): Promise<ParkingSpotResponse>;
+    private replaceSchedule;
     findAllByOwner(ownerId: string): Promise<ParkingSpotResponse[]>;
 }

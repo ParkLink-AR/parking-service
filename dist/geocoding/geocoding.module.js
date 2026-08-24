@@ -9,6 +9,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.GeocodingModule = void 0;
 const common_1 = require("@nestjs/common");
 const axios_1 = require("@nestjs/axios");
+const geocoding_controller_1 = require("./geocoding.controller");
 const geocoding_service_1 = require("./geocoding.service");
 let GeocodingModule = class GeocodingModule {
 };
@@ -16,6 +17,7 @@ exports.GeocodingModule = GeocodingModule;
 exports.GeocodingModule = GeocodingModule = __decorate([
     (0, common_1.Module)({
         imports: [axios_1.HttpModule],
+        controllers: [geocoding_controller_1.GeocodingController],
         providers: [geocoding_service_1.GeocodingService],
         exports: [geocoding_service_1.GeocodingService],
     })

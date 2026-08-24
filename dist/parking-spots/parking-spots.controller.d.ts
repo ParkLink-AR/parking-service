@@ -1,6 +1,7 @@
 import { ParkingSpotsService } from './parking-spots.service';
 import { SearchParkingSpotDto } from './dto/search-parking-spot.dto';
 import { CreateParkingSpotDto } from './dto/create-parking-spot.dto';
+import { UpdateParkingSpotDto } from './dto/update-parking-spot.dto';
 import { AvailabilityService } from '../availability/availability.service';
 import { AvailabilityQueryDto } from '../availability/dto/availability-query.dto';
 export declare class ParkingSpotsController {
@@ -13,5 +14,6 @@ export declare class ParkingSpotsController {
         days: import("../availability/availability.service").DayAvailabilityResponse[];
     }>;
     create(dto: CreateParkingSpotDto, ownerId?: string): Promise<import("./parking-spots.service").ParkingSpotResponse>;
+    update(id: string, dto: UpdateParkingSpotDto, _userId?: string): Promise<import("./parking-spots.service").ParkingSpotResponse>;
     findAllByOwner(id: string): Promise<import("./parking-spots.service").ParkingSpotResponse[]>;
 }

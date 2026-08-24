@@ -11,6 +11,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ParkingSpot = exports.ParkingSpotStatus = void 0;
 const typeorm_1 = require("typeorm");
+const parking_spot_schedule_entity_1 = require("./parking-spot-schedule.entity");
 var ParkingSpotStatus;
 (function (ParkingSpotStatus) {
     ParkingSpotStatus["ACTIVE"] = "active";
@@ -59,9 +60,9 @@ __decorate([
     __metadata("design:type", Boolean)
 ], ParkingSpot.prototype, "covered", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ name: 'schedule_text', type: 'varchar', length: 255, nullable: true }),
-    __metadata("design:type", Object)
-], ParkingSpot.prototype, "scheduleText", void 0);
+    (0, typeorm_1.OneToMany)(() => parking_spot_schedule_entity_1.ParkingSpotSchedule, (schedule) => schedule.parkingSpot, { cascade: true }),
+    __metadata("design:type", Array)
+], ParkingSpot.prototype, "schedule", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'jsonb', nullable: true }),
     __metadata("design:type", Array)

@@ -5,7 +5,9 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
+  OneToMany,
 } from 'typeorm';
+import { ParkingSpotSchedule } from './parking-spot-schedule.entity';
 
 export enum ParkingSpotStatus {
   ACTIVE = 'active',
@@ -49,10 +51,14 @@ export class ParkingSpot {
   @Column({ default: false })
   covered!: boolean;
 
-  // Texto libre (ej. "Lun a Vie, 8:00 a 22:00 hs"), tal como lo tipea el
-  // owner al publicar -- no hay un horario estructurado todavía.
-  @Column({ name: 'schedule_text', type: 'varchar', length: 255, nullable: true })
-  scheduleText!: string | null;
+  // Horario semanal recurrente, una fila por franja publicada (ver
+  // ParkingSpotSchedule). cascade:true sólo cubre el insert inicial al
+  // crear la cochera (ParkingSpotsService.create) -- reemplazar el horario
+  // (ParkingSpotsService.replaceSchedule) borra e inserta explícitamente en
+  // una transacción en vez de reasignar este array, porque TypeORM corre
+  // los INSERTs del cascade antes que los REMOVEs de orphanedRowAction.
+  @OneToMany(() => ParkingSpotSchedule, (schedule) => schedule.parkingSpot, { cascade: true })
+  schedule!: ParkingSpotSchedule[];
 
   @Column({ type: 'jsonb', nullable: true })
   photos!: string[];

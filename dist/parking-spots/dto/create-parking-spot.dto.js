@@ -10,7 +10,9 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CreateParkingSpotDto = void 0;
+const class_transformer_1 = require("class-transformer");
 const class_validator_1 = require("class-validator");
+const schedule_entry_dto_1 = require("./schedule-entry.dto");
 class CreateParkingSpotDto {
 }
 exports.CreateParkingSpotDto = CreateParkingSpotDto;
@@ -28,6 +30,14 @@ __decorate([
     __metadata("design:type", String)
 ], CreateParkingSpotDto.prototype, "address", void 0);
 __decorate([
+    (0, class_validator_1.IsLatitude)(),
+    __metadata("design:type", Number)
+], CreateParkingSpotDto.prototype, "lat", void 0);
+__decorate([
+    (0, class_validator_1.IsLongitude)(),
+    __metadata("design:type", Number)
+], CreateParkingSpotDto.prototype, "lng", void 0);
+__decorate([
     (0, class_validator_1.IsNumber)(),
     (0, class_validator_1.Min)(0),
     __metadata("design:type", Number)
@@ -39,9 +49,11 @@ __decorate([
 ], CreateParkingSpotDto.prototype, "covered", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)(),
-    __metadata("design:type", String)
-], CreateParkingSpotDto.prototype, "scheduleText", void 0);
+    (0, class_validator_1.IsArray)(),
+    (0, class_validator_1.ValidateNested)({ each: true }),
+    (0, class_transformer_1.Type)(() => schedule_entry_dto_1.ScheduleEntryDto),
+    __metadata("design:type", Array)
+], CreateParkingSpotDto.prototype, "schedule", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsArray)(),

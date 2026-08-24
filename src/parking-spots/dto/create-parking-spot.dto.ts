@@ -1,4 +1,16 @@
-import { IsArray, IsBoolean, IsLatitude, IsLongitude, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsArray,
+  IsBoolean,
+  IsLatitude,
+  IsLongitude,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+  ValidateNested,
+} from 'class-validator';
+import { ScheduleEntryDto } from './schedule-entry.dto';
 
 export class CreateParkingSpotDto {
   @IsString()
@@ -30,8 +42,10 @@ export class CreateParkingSpotDto {
   covered?: boolean;
 
   @IsOptional()
-  @IsString()
-  scheduleText?: string;
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ScheduleEntryDto)
+  schedule?: ScheduleEntryDto[];
 
   @IsOptional()
   @IsArray()
