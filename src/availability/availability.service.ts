@@ -2,8 +2,9 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ParkingSpot, ParkingSpotStatus } from '../parking-spots/entities/parking-spot.entity';
+import { ParkingSpotSchedule } from '../parking-spots/entities/parking-spot-schedule.entity';
 import { BookingClientService } from '../booking-client/booking-client.service';
-import { publishedWindowsForDay } from './schedule-mock';
+import { publishedWindowsForDay } from './published-schedule';
 import { buenosAiresMidnight, datesInRange, formatBuenosAires } from './buenos-aires-time';
 import { subtractIntervals, filterOverlapping, determineStatus, AvailabilityStatus, TimeWindow } from './interval-math';
 
@@ -21,6 +22,8 @@ export class AvailabilityService {
   constructor(
     @InjectRepository(ParkingSpot)
     private readonly parkingSpotRepo: Repository<ParkingSpot>,
+    @InjectRepository(ParkingSpotSchedule)
+    private readonly scheduleRepo: Repository<ParkingSpotSchedule>,
     private readonly bookingClient: BookingClientService,
   ) {}
 
@@ -34,11 +37,12 @@ export class AvailabilityService {
       throw new NotFoundException('Cochera no encontrada');
     }
 
+    const schedule = await this.scheduleRepo.find({ where: { parkingSpotId } });
     const activeBookings = await this.bookingClient.getActiveBookings(parkingSpotId, from, to);
 
     const days: DayAvailabilityResponse[] = [];
     for (const dateISO of datesInRange(from, to)) {
-      const baseWindows = publishedWindowsForDay(dateISO);
+      const baseWindows = publishedWindowsForDay(schedule, dateISO);
       const baseIsEmpty = baseWindows.length === 0;
 
       let freeWindows: TimeWindow[] = [];

@@ -14,32 +14,65 @@ const common_1 = require("@nestjs/common");
 const axios_1 = require("@nestjs/axios");
 const config_1 = require("@nestjs/config");
 const rxjs_1 = require("rxjs");
+const NOMINATIM_COUNTRY_CODE = 'ar';
+const BUENOS_AIRES_VIEWBOX = '-58.53,-34.53,-58.33,-34.70';
+const SEARCH_RESULTS_LIMIT = 5;
+function formatAddress(address) {
+    const street = [address?.road, address?.house_number].filter(Boolean).join(' ');
+    const city = address?.city ?? address?.town ?? address?.village ?? address?.municipality;
+    return [street, city, address?.state, address?.postcode, address?.country]
+        .filter(Boolean)
+        .join(', ');
+}
 let GeocodingService = class GeocodingService {
     constructor(httpService, configService) {
         this.httpService = httpService;
         this.configService = configService;
     }
-    async geocodeAddress(address) {
+    async searchAddress(query, limit = SEARCH_RESULTS_LIMIT) {
         const baseUrl = this.configService.get('NOMINATIM_BASE_URL');
         const userAgent = this.configService.get('NOMINATIM_USER_AGENT');
         const { data } = await (0, rxjs_1.firstValueFrom)(this.httpService.get(`${baseUrl}/search`, {
             params: {
-                q: address,
+                q: query,
                 format: 'json',
-                limit: 1,
+                limit,
+                addressdetails: 1,
+                countrycodes: NOMINATIM_COUNTRY_CODE,
+                viewbox: BUENOS_AIRES_VIEWBOX,
+                bounded: 0,
             },
             headers: {
                 'User-Agent': userAgent,
             },
         }));
-        if (!data || data.length === 0) {
-            throw new common_1.BadRequestException('No se pudo geocodificar la dirección provista. Verificá que sea válida.');
-        }
-        const result = data[0];
-        return {
+        return (data ?? []).map((result) => ({
             lat: parseFloat(result.lat),
             lng: parseFloat(result.lon),
-            displayName: result.display_name,
+            displayName: formatAddress(result.address) || result.display_name,
+            city: result.address?.city ??
+                result.address?.town ??
+                result.address?.village ??
+                result.address?.municipality,
+            postcode: result.address?.postcode,
+        }));
+    }
+    async reverseGeocode(lat, lng) {
+        const baseUrl = this.configService.get('NOMINATIM_BASE_URL');
+        const userAgent = this.configService.get('NOMINATIM_USER_AGENT');
+        const { data } = await (0, rxjs_1.firstValueFrom)(this.httpService.get(`${baseUrl}/reverse`, {
+            params: { lat, lon: lng, format: 'json', addressdetails: 1 },
+            headers: {
+                'User-Agent': userAgent,
+            },
+        }));
+        if (!data || !data.address) {
+            throw new common_1.BadRequestException('No se pudo determinar la dirección de esa ubicación.');
+        }
+        return {
+            lat,
+            lng,
+            displayName: formatAddress(data.address) || data.display_name,
         };
     }
 };

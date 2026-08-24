@@ -1,3 +1,4 @@
+import { ParkingSpotSchedule } from './parking-spot-schedule.entity';
 export declare enum ParkingSpotStatus {
     ACTIVE = "active",
     PAUSED = "paused",
@@ -12,7 +13,7 @@ export declare class ParkingSpot {
     location: any;
     pricePerHour: number;
     covered: boolean;
-    scheduleText: string | null;
+    schedule: ParkingSpotSchedule[];
     photos: string[];
     rules: string[];
     status: ParkingSpotStatus;

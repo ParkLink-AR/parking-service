@@ -1,10 +1,18 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { ParkingSpot, ParkingSpotStatus } from './entities/parking-spot.entity';
+import { ParkingSpotSchedule } from './entities/parking-spot-schedule.entity';
 import { SearchParkingSpotDto } from './dto/search-parking-spot.dto';
 import { CreateParkingSpotDto } from './dto/create-parking-spot.dto';
 import { UpdateParkingSpotDto } from './dto/update-parking-spot.dto';
+import { ScheduleEntryDto } from './dto/schedule-entry.dto';
+
+export interface ScheduleEntryResponse {
+  dayOfWeek: number;
+  startHour: number;
+  endHour: number;
+}
 
 // The `geography` column doesn't come back usable from a plain find()/findOne()
 // (node-postgres returns raw EWKB for it) -- every read path goes through
@@ -19,7 +27,7 @@ export interface ParkingSpotResponse {
   lng: number;
   pricePerHour: number;
   covered: boolean;
-  scheduleText: string | null;
+  schedule: ScheduleEntryResponse[];
   photos: string[];
   rules: string[];
   status: ParkingSpotStatus;
@@ -39,7 +47,6 @@ const BASE_COLUMNS: Array<[string, string]> = [
   ['spot.address', 'address'],
   ['spot.pricePerHour', 'pricePerHour'],
   ['spot.covered', 'covered'],
-  ['spot.scheduleText', 'scheduleText'],
   ['spot.photos', 'photos'],
   ['spot.rules', 'rules'],
   ['spot.status', 'status'],
@@ -54,7 +61,11 @@ function selectBaseColumns<T extends { select: Function; addSelect: Function }>(
   return qb;
 }
 
-function toResponse(raw: Record<string, any>, distanceMeters?: number): ParkingSpotResponse {
+function toResponse(
+  raw: Record<string, any>,
+  schedule: ScheduleEntryResponse[],
+  distanceMeters?: number,
+): ParkingSpotResponse {
   return {
     id: raw.id,
     ownerId: raw.ownerId,
@@ -65,7 +76,7 @@ function toResponse(raw: Record<string, any>, distanceMeters?: number): ParkingS
     lng: parseFloat(raw.lng),
     pricePerHour: parseFloat(raw.pricePerHour),
     covered: raw.covered,
-    scheduleText: raw.scheduleText,
+    schedule,
     photos: raw.photos ?? [],
     rules: raw.rules ?? [],
     status: raw.status,
@@ -75,12 +86,76 @@ function toResponse(raw: Record<string, any>, distanceMeters?: number): ParkingS
   };
 }
 
+function toScheduleResponse(rows: ParkingSpotSchedule[]): ScheduleEntryResponse[] {
+  return rows
+    .map((row) => ({ dayOfWeek: row.dayOfWeek, startHour: row.startHour, endHour: row.endHour }))
+    .sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.startHour - b.startHour);
+}
+
+// Dos franjas del mismo día se pisan si una empieza antes de que la otra
+// termine y viceversa -- mismo chequeo que booking-service usa para
+// reservas (hasOverlap en create_booking_validation.go), acá aplicado
+// dentro de un solo request en vez de contra la DB.
+function overlaps(a: ScheduleEntryDto, b: ScheduleEntryDto): boolean {
+  return a.startHour < b.endHour && b.startHour < a.endHour;
+}
+
+function validateNoScheduleOverlap(entries: ScheduleEntryDto[]): void {
+  for (const entry of entries) {
+    if (entry.startHour >= entry.endHour) {
+      throw new BadRequestException(
+        `Horario inválido para el día ${entry.dayOfWeek}: startHour debe ser menor que endHour.`,
+      );
+    }
+  }
+
+  const byDay = new Map<number, ScheduleEntryDto[]>();
+  for (const entry of entries) {
+    const dayEntries = byDay.get(entry.dayOfWeek) ?? [];
+    dayEntries.push(entry);
+    byDay.set(entry.dayOfWeek, dayEntries);
+  }
+
+  for (const [dayOfWeek, dayEntries] of byDay) {
+    for (let i = 0; i < dayEntries.length; i++) {
+      for (let j = i + 1; j < dayEntries.length; j++) {
+        if (overlaps(dayEntries[i], dayEntries[j])) {
+          throw new BadRequestException(`Hay franjas horarias superpuestas para el día ${dayOfWeek}.`);
+        }
+      }
+    }
+  }
+}
+
 @Injectable()
 export class ParkingSpotsService {
   constructor(
     @InjectRepository(ParkingSpot)
     private readonly parkingSpotRepo: Repository<ParkingSpot>,
+    @InjectRepository(ParkingSpotSchedule)
+    private readonly scheduleRepo: Repository<ParkingSpotSchedule>,
   ) {}
+
+  private async scheduleFor(parkingSpotId: string): Promise<ScheduleEntryResponse[]> {
+    const rows = await this.scheduleRepo.find({ where: { parkingSpotId } });
+    return toScheduleResponse(rows);
+  }
+
+  private async scheduleForMany(parkingSpotIds: string[]): Promise<Map<string, ScheduleEntryResponse[]>> {
+    if (parkingSpotIds.length === 0) return new Map();
+    const rows = await this.scheduleRepo.find({ where: { parkingSpotId: In(parkingSpotIds) } });
+    const byId = new Map<string, ParkingSpotSchedule[]>();
+    for (const row of rows) {
+      const list = byId.get(row.parkingSpotId) ?? [];
+      list.push(row);
+      byId.set(row.parkingSpotId, list);
+    }
+    const result = new Map<string, ScheduleEntryResponse[]>();
+    for (const id of parkingSpotIds) {
+      result.set(id, toScheduleResponse(byId.get(id) ?? []));
+    }
+    return result;
+  }
 
   /**
    * Búsqueda geoespacial usando ST_DWithin de PostGIS.
@@ -112,7 +187,8 @@ export class ParkingSpotsService {
     }
 
     const raw = await query.getRawMany();
-    return raw.map((row) => toResponse(row, parseFloat(row.distanceM)));
+    const schedules = await this.scheduleForMany(raw.map((row) => row.id));
+    return raw.map((row) => toResponse(row, schedules.get(row.id) ?? [], parseFloat(row.distanceM)));
   }
 
   async findById(id: string): Promise<ParkingSpotResponse> {
@@ -127,7 +203,7 @@ export class ParkingSpotsService {
       throw new NotFoundException('Cochera no encontrada');
     }
 
-    return toResponse(raw);
+    return toResponse(raw, await this.scheduleFor(id));
   }
 
   /**
@@ -137,13 +213,14 @@ export class ParkingSpotsService {
    * si usó su ubicación actual), así que create() no vuelve a geocodificar.
    */
   async create(dto: CreateParkingSpotDto, ownerId: string): Promise<ParkingSpotResponse> {
+    if (dto.schedule) validateNoScheduleOverlap(dto.schedule);
+
     const spot = this.parkingSpotRepo.create({
       title: dto.title,
       description: dto.description,
       address: dto.address,
       pricePerHour: dto.pricePerHour,
       covered: dto.covered ?? false,
-      scheduleText: dto.scheduleText ?? null,
       rules: dto.rules ?? [],
       ownerId,
       // GeoJSON format: TypeORM/PostGIS espera { type: 'Point', coordinates: [lng, lat] }
@@ -151,6 +228,7 @@ export class ParkingSpotsService {
         type: 'Point',
         coordinates: [dto.lng, dto.lat],
       },
+      schedule: (dto.schedule ?? []).map((entry) => this.scheduleRepo.create(entry)),
     });
 
     const saved = await this.parkingSpotRepo.save(spot);
@@ -164,7 +242,6 @@ export class ParkingSpotsService {
     if (dto.pricePerHour !== undefined) spot.pricePerHour = dto.pricePerHour;
     if (dto.description !== undefined) spot.description = dto.description;
     if (dto.covered !== undefined) spot.covered = dto.covered;
-    if (dto.scheduleText !== undefined) spot.scheduleText = dto.scheduleText;
 
     const changingLocation = dto.address !== undefined || dto.lat !== undefined || dto.lng !== undefined;
     if (changingLocation) {
@@ -177,7 +254,30 @@ export class ParkingSpotsService {
     }
 
     await this.parkingSpotRepo.save(spot);
+
+    if (dto.schedule !== undefined) {
+      validateNoScheduleOverlap(dto.schedule);
+      await this.replaceSchedule(id, dto.schedule);
+    }
+
     return this.findById(id);
+  }
+
+  /**
+   * Reemplazo completo del horario de una cochera. Borra-y-reinserta en una
+   * transacción explícita en vez de reasignar spot.schedule + cascade: el
+   * SubjectExecutor de TypeORM corre los INSERTs antes que los REMOVEs de
+   * orphanedRowAction, así que las filas nuevas chocan con las viejas
+   * (todavía no borradas) contra el EXCLUDE -- verificado en la práctica.
+   */
+  private async replaceSchedule(parkingSpotId: string, entries: ScheduleEntryDto[]): Promise<void> {
+    await this.scheduleRepo.manager.transaction(async (manager) => {
+      await manager.delete(ParkingSpotSchedule, { parkingSpotId });
+      if (entries.length > 0) {
+        const rows = entries.map((entry) => manager.create(ParkingSpotSchedule, { parkingSpotId, ...entry }));
+        await manager.save(rows);
+      }
+    });
   }
 
   async findAllByOwner(ownerId: string): Promise<ParkingSpotResponse[]> {
@@ -188,6 +288,7 @@ export class ParkingSpotsService {
       .orderBy('spot.createdAt', 'DESC')
       .getRawMany();
 
-    return raw.map((row) => toResponse(row));
+    const schedules = await this.scheduleForMany(raw.map((row) => row.id));
+    return raw.map((row) => toResponse(row, schedules.get(row.id) ?? []));
   }
 }

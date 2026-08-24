@@ -17,6 +17,7 @@ const common_1 = require("@nestjs/common");
 const parking_spots_service_1 = require("./parking-spots.service");
 const search_parking_spot_dto_1 = require("./dto/search-parking-spot.dto");
 const create_parking_spot_dto_1 = require("./dto/create-parking-spot.dto");
+const update_parking_spot_dto_1 = require("./dto/update-parking-spot.dto");
 const availability_service_1 = require("../availability/availability.service");
 const availability_query_dto_1 = require("../availability/dto/availability-query.dto");
 let ParkingSpotsController = class ParkingSpotsController {
@@ -38,6 +39,9 @@ let ParkingSpotsController = class ParkingSpotsController {
             throw new common_1.BadRequestException('Missing x-user-id header (request must go through the gateway).');
         }
         return this.parkingSpotsService.create(dto, ownerId);
+    }
+    update(id, dto, _userId) {
+        return this.parkingSpotsService.update(id, dto);
     }
     findAllByOwner(id) {
         return this.parkingSpotsService.findAllByOwner(id);
@@ -74,6 +78,15 @@ __decorate([
     __metadata("design:paramtypes", [create_parking_spot_dto_1.CreateParkingSpotDto, String]),
     __metadata("design:returntype", void 0)
 ], ParkingSpotsController.prototype, "create", null);
+__decorate([
+    (0, common_1.Put)('parking-spots/:id'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, common_1.Headers)('x-user-id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, update_parking_spot_dto_1.UpdateParkingSpotDto, String]),
+    __metadata("design:returntype", void 0)
+], ParkingSpotsController.prototype, "update", null);
 __decorate([
     (0, common_1.Get)('users/:id/parking-spots'),
     __param(0, (0, common_1.Param)('id')),

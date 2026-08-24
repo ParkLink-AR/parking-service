@@ -17,7 +17,7 @@ const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const parking_spot_entity_1 = require("./entities/parking-spot.entity");
-const geocoding_service_1 = require("../geocoding/geocoding.service");
+const parking_spot_schedule_entity_1 = require("./entities/parking-spot-schedule.entity");
 const BASE_COLUMNS = [
     ['spot.id', 'id'],
     ['spot.ownerId', 'ownerId'],
@@ -26,7 +26,6 @@ const BASE_COLUMNS = [
     ['spot.address', 'address'],
     ['spot.pricePerHour', 'pricePerHour'],
     ['spot.covered', 'covered'],
-    ['spot.scheduleText', 'scheduleText'],
     ['spot.photos', 'photos'],
     ['spot.rules', 'rules'],
     ['spot.status', 'status'],
@@ -40,7 +39,7 @@ function selectBaseColumns(qb) {
         qb.addSelect(column, alias);
     return qb;
 }
-function toResponse(raw, distanceMeters) {
+function toResponse(raw, schedule, distanceMeters) {
     return {
         id: raw.id,
         ownerId: raw.ownerId,
@@ -51,7 +50,7 @@ function toResponse(raw, distanceMeters) {
         lng: parseFloat(raw.lng),
         pricePerHour: parseFloat(raw.pricePerHour),
         covered: raw.covered,
-        scheduleText: raw.scheduleText,
+        schedule,
         photos: raw.photos ?? [],
         rules: raw.rules ?? [],
         status: raw.status,
@@ -60,10 +59,60 @@ function toResponse(raw, distanceMeters) {
         ...(distanceMeters !== undefined ? { distanceMeters: Math.round(distanceMeters) } : {}),
     };
 }
+function toScheduleResponse(rows) {
+    return rows
+        .map((row) => ({ dayOfWeek: row.dayOfWeek, startHour: row.startHour, endHour: row.endHour }))
+        .sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.startHour - b.startHour);
+}
+function overlaps(a, b) {
+    return a.startHour < b.endHour && b.startHour < a.endHour;
+}
+function validateNoScheduleOverlap(entries) {
+    for (const entry of entries) {
+        if (entry.startHour >= entry.endHour) {
+            throw new common_1.BadRequestException(`Horario inválido para el día ${entry.dayOfWeek}: startHour debe ser menor que endHour.`);
+        }
+    }
+    const byDay = new Map();
+    for (const entry of entries) {
+        const dayEntries = byDay.get(entry.dayOfWeek) ?? [];
+        dayEntries.push(entry);
+        byDay.set(entry.dayOfWeek, dayEntries);
+    }
+    for (const [dayOfWeek, dayEntries] of byDay) {
+        for (let i = 0; i < dayEntries.length; i++) {
+            for (let j = i + 1; j < dayEntries.length; j++) {
+                if (overlaps(dayEntries[i], dayEntries[j])) {
+                    throw new common_1.BadRequestException(`Hay franjas horarias superpuestas para el día ${dayOfWeek}.`);
+                }
+            }
+        }
+    }
+}
 let ParkingSpotsService = class ParkingSpotsService {
-    constructor(parkingSpotRepo, geocodingService) {
+    constructor(parkingSpotRepo, scheduleRepo) {
         this.parkingSpotRepo = parkingSpotRepo;
-        this.geocodingService = geocodingService;
+        this.scheduleRepo = scheduleRepo;
+    }
+    async scheduleFor(parkingSpotId) {
+        const rows = await this.scheduleRepo.find({ where: { parkingSpotId } });
+        return toScheduleResponse(rows);
+    }
+    async scheduleForMany(parkingSpotIds) {
+        if (parkingSpotIds.length === 0)
+            return new Map();
+        const rows = await this.scheduleRepo.find({ where: { parkingSpotId: (0, typeorm_2.In)(parkingSpotIds) } });
+        const byId = new Map();
+        for (const row of rows) {
+            const list = byId.get(row.parkingSpotId) ?? [];
+            list.push(row);
+            byId.set(row.parkingSpotId, list);
+        }
+        const result = new Map();
+        for (const id of parkingSpotIds) {
+            result.set(id, toScheduleResponse(byId.get(id) ?? []));
+        }
+        return result;
     }
     async search(filters) {
         const origin = `ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography`;
@@ -87,7 +136,8 @@ let ParkingSpotsService = class ParkingSpotsService {
             query.andWhere('spot.covered = :covered', { covered: filters.covered });
         }
         const raw = await query.getRawMany();
-        return raw.map((row) => toResponse(row, parseFloat(row.distanceM)));
+        const schedules = await this.scheduleForMany(raw.map((row) => row.id));
+        return raw.map((row) => toResponse(row, schedules.get(row.id) ?? [], parseFloat(row.distanceM)));
     }
     async findById(id) {
         const raw = await selectBaseColumns(this.parkingSpotRepo.createQueryBuilder('spot'))
@@ -99,26 +149,61 @@ let ParkingSpotsService = class ParkingSpotsService {
         if (!raw) {
             throw new common_1.NotFoundException('Cochera no encontrada');
         }
-        return toResponse(raw);
+        return toResponse(raw, await this.scheduleFor(id));
     }
     async create(dto, ownerId) {
-        const geocoded = await this.geocodingService.geocodeAddress(dto.address);
+        if (dto.schedule)
+            validateNoScheduleOverlap(dto.schedule);
         const spot = this.parkingSpotRepo.create({
             title: dto.title,
             description: dto.description,
             address: dto.address,
             pricePerHour: dto.pricePerHour,
             covered: dto.covered ?? false,
-            scheduleText: dto.scheduleText ?? null,
             rules: dto.rules ?? [],
             ownerId,
             location: {
                 type: 'Point',
-                coordinates: [geocoded.lng, geocoded.lat],
+                coordinates: [dto.lng, dto.lat],
             },
+            schedule: (dto.schedule ?? []).map((entry) => this.scheduleRepo.create(entry)),
         });
         const saved = await this.parkingSpotRepo.save(spot);
         return this.findById(saved.id);
+    }
+    async update(id, dto) {
+        const spot = await this.parkingSpotRepo.findOne({ where: { id } });
+        if (!spot)
+            throw new common_1.NotFoundException('Cochera no encontrada');
+        if (dto.pricePerHour !== undefined)
+            spot.pricePerHour = dto.pricePerHour;
+        if (dto.description !== undefined)
+            spot.description = dto.description;
+        if (dto.covered !== undefined)
+            spot.covered = dto.covered;
+        const changingLocation = dto.address !== undefined || dto.lat !== undefined || dto.lng !== undefined;
+        if (changingLocation) {
+            if (dto.address === undefined || dto.lat === undefined || dto.lng === undefined) {
+                throw new common_1.BadRequestException('address, lat and lng must all be provided together to change the location.');
+            }
+            spot.address = dto.address;
+            spot.location = { type: 'Point', coordinates: [dto.lng, dto.lat] };
+        }
+        await this.parkingSpotRepo.save(spot);
+        if (dto.schedule !== undefined) {
+            validateNoScheduleOverlap(dto.schedule);
+            await this.replaceSchedule(id, dto.schedule);
+        }
+        return this.findById(id);
+    }
+    async replaceSchedule(parkingSpotId, entries) {
+        await this.scheduleRepo.manager.transaction(async (manager) => {
+            await manager.delete(parking_spot_schedule_entity_1.ParkingSpotSchedule, { parkingSpotId });
+            if (entries.length > 0) {
+                const rows = entries.map((entry) => manager.create(parking_spot_schedule_entity_1.ParkingSpotSchedule, { parkingSpotId, ...entry }));
+                await manager.save(rows);
+            }
+        });
     }
     async findAllByOwner(ownerId) {
         const raw = await selectBaseColumns(this.parkingSpotRepo.createQueryBuilder('spot'))
@@ -127,14 +212,16 @@ let ParkingSpotsService = class ParkingSpotsService {
             .where('spot.ownerId = :ownerId', { ownerId })
             .orderBy('spot.createdAt', 'DESC')
             .getRawMany();
-        return raw.map((row) => toResponse(row));
+        const schedules = await this.scheduleForMany(raw.map((row) => row.id));
+        return raw.map((row) => toResponse(row, schedules.get(row.id) ?? []));
     }
 };
 exports.ParkingSpotsService = ParkingSpotsService;
 exports.ParkingSpotsService = ParkingSpotsService = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectRepository)(parking_spot_entity_1.ParkingSpot)),
+    __param(1, (0, typeorm_1.InjectRepository)(parking_spot_schedule_entity_1.ParkingSpotSchedule)),
     __metadata("design:paramtypes", [typeorm_2.Repository,
-        geocoding_service_1.GeocodingService])
+        typeorm_2.Repository])
 ], ParkingSpotsService);
 //# sourceMappingURL=parking-spots.service.js.map

@@ -1,4 +1,6 @@
-import { IsBoolean, IsLatitude, IsLongitude, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsArray, IsBoolean, IsLatitude, IsLongitude, IsNumber, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
+import { ScheduleEntryDto } from './schedule-entry.dto';
 
 export class UpdateParkingSpotDto {
   @IsOptional()
@@ -14,9 +16,13 @@ export class UpdateParkingSpotDto {
   @IsBoolean()
   covered?: boolean;
 
+  // Reemplazo completo del horario semanal (no un patch incremental por
+  // día) -- ver ParkingSpotsService.replaceSchedule.
   @IsOptional()
-  @IsString()
-  scheduleText?: string;
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ScheduleEntryDto)
+  schedule?: ScheduleEntryDto[];
 
   // Cambiar la ubicación: igual que al publicar, mobile ya resolvió estas
   // coordenadas (vía GET /geocode o el GPS) antes de mandar esto. Los tres

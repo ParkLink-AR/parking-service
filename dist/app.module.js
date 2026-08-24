@@ -13,6 +13,7 @@ const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_config_1 = require("./config/typeorm.config");
 const parking_spots_module_1 = require("./parking-spots/parking-spots.module");
 const geocoding_module_1 = require("./geocoding/geocoding.module");
+const database_module_1 = require("./database/database.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -23,6 +24,7 @@ exports.AppModule = AppModule = __decorate([
             typeorm_1.TypeOrmModule.forRootAsync({
                 useFactory: typeorm_config_1.typeOrmConfig,
             }),
+            database_module_1.DatabaseModule,
             parking_spots_module_1.ParkingSpotsModule,
             geocoding_module_1.GeocodingModule,
         ],
