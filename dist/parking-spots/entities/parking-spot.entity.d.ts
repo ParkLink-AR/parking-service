@@ -11,6 +11,8 @@ export declare class ParkingSpot {
     address: string;
     location: any;
     pricePerHour: number;
+    covered: boolean;
+    scheduleText: string | null;
     photos: string[];
     rules: string[];
     status: ParkingSpotStatus;

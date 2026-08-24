@@ -14,13 +14,15 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ParkingSpotsController = void 0;
 const common_1 = require("@nestjs/common");
-const uuid_1 = require("uuid");
 const parking_spots_service_1 = require("./parking-spots.service");
 const search_parking_spot_dto_1 = require("./dto/search-parking-spot.dto");
 const create_parking_spot_dto_1 = require("./dto/create-parking-spot.dto");
+const availability_service_1 = require("../availability/availability.service");
+const availability_query_dto_1 = require("../availability/dto/availability-query.dto");
 let ParkingSpotsController = class ParkingSpotsController {
-    constructor(parkingSpotsService) {
+    constructor(parkingSpotsService, availabilityService) {
         this.parkingSpotsService = parkingSpotsService;
+        this.availabilityService = availabilityService;
     }
     search(filters) {
         return this.parkingSpotsService.search(filters);
@@ -28,8 +30,13 @@ let ParkingSpotsController = class ParkingSpotsController {
     findById(id) {
         return this.parkingSpotsService.findById(id);
     }
-    create(dto) {
-        const ownerId = (0, uuid_1.v4)();
+    getAvailability(id, query) {
+        return this.availabilityService.getAvailability(id, query.from, query.to);
+    }
+    create(dto, ownerId) {
+        if (!ownerId) {
+            throw new common_1.BadRequestException('Missing x-user-id header (request must go through the gateway).');
+        }
         return this.parkingSpotsService.create(dto, ownerId);
     }
     findAllByOwner(id) {
@@ -52,10 +59,19 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], ParkingSpotsController.prototype, "findById", null);
 __decorate([
+    (0, common_1.Get)('parking-spots/:id/availability'),
+    __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
+    __param(1, (0, common_1.Query)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, availability_query_dto_1.AvailabilityQueryDto]),
+    __metadata("design:returntype", void 0)
+], ParkingSpotsController.prototype, "getAvailability", null);
+__decorate([
     (0, common_1.Post)('parking-spots'),
     __param(0, (0, common_1.Body)()),
+    __param(1, (0, common_1.Headers)('x-user-id')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [create_parking_spot_dto_1.CreateParkingSpotDto]),
+    __metadata("design:paramtypes", [create_parking_spot_dto_1.CreateParkingSpotDto, String]),
     __metadata("design:returntype", void 0)
 ], ParkingSpotsController.prototype, "create", null);
 __decorate([
@@ -67,6 +83,7 @@ __decorate([
 ], ParkingSpotsController.prototype, "findAllByOwner", null);
 exports.ParkingSpotsController = ParkingSpotsController = __decorate([
     (0, common_1.Controller)(),
-    __metadata("design:paramtypes", [parking_spots_service_1.ParkingSpotsService])
+    __metadata("design:paramtypes", [parking_spots_service_1.ParkingSpotsService,
+        availability_service_1.AvailabilityService])
 ], ParkingSpotsController);
 //# sourceMappingURL=parking-spots.controller.js.map
