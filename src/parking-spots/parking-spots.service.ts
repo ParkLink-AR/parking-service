@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { ParkingSpot, ParkingSpotStatus } from './entities/parking-spot.entity';
@@ -7,6 +7,7 @@ import { SearchParkingSpotDto } from './dto/search-parking-spot.dto';
 import { CreateParkingSpotDto } from './dto/create-parking-spot.dto';
 import { UpdateParkingSpotDto } from './dto/update-parking-spot.dto';
 import { ScheduleEntryDto } from './dto/schedule-entry.dto';
+import { BookingClientService } from '../booking-client/booking-client.service';
 
 export interface ScheduleEntryResponse {
   dayOfWeek: number;
@@ -129,11 +130,14 @@ function validateNoScheduleOverlap(entries: ScheduleEntryDto[]): void {
 
 @Injectable()
 export class ParkingSpotsService {
+  private readonly logger = new Logger(ParkingSpotsService.name);
+
   constructor(
     @InjectRepository(ParkingSpot)
     private readonly parkingSpotRepo: Repository<ParkingSpot>,
     @InjectRepository(ParkingSpotSchedule)
     private readonly scheduleRepo: Repository<ParkingSpotSchedule>,
+    private readonly bookingClient: BookingClientService,
   ) {}
 
   private async scheduleFor(parkingSpotId: string): Promise<ScheduleEntryResponse[]> {
@@ -188,7 +192,28 @@ export class ParkingSpotsService {
 
     const raw = await query.getRawMany();
     const schedules = await this.scheduleForMany(raw.map((row) => row.id));
-    return raw.map((row) => toResponse(row, schedules.get(row.id) ?? [], parseFloat(row.distanceM)));
+    const spots = raw.map((row) => toResponse(row, schedules.get(row.id) ?? [], parseFloat(row.distanceM)));
+
+    if (filters.from === undefined || filters.to === undefined || spots.length === 0) {
+      return spots;
+    }
+
+    try {
+      const bookableIDs = new Set(
+        await this.bookingClient.getBookableSpotIds(
+          spots.map((spot) => spot.id),
+          filters.from,
+          filters.to,
+        ),
+      );
+      return spots.filter((spot) => bookableIDs.has(spot.id));
+    } catch (error) {
+      // booking-service caído: mostramos la búsqueda sin el filtro de horario
+      // en vez de romperla entera -- mejor resultados sin garantía de
+      // disponibilidad que ningún resultado.
+      this.logger.warn(`No se pudo filtrar por disponibilidad, booking-service no respondió: ${error}`);
+      return spots;
+    }
   }
 
   async findById(id: string): Promise<ParkingSpotResponse> {

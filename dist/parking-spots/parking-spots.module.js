@@ -15,12 +15,18 @@ const parking_spots_service_1 = require("./parking-spots.service");
 const parking_spots_controller_1 = require("./parking-spots.controller");
 const geocoding_module_1 = require("../geocoding/geocoding.module");
 const availability_module_1 = require("../availability/availability.module");
+const booking_client_module_1 = require("../booking-client/booking-client.module");
 let ParkingSpotsModule = class ParkingSpotsModule {
 };
 exports.ParkingSpotsModule = ParkingSpotsModule;
 exports.ParkingSpotsModule = ParkingSpotsModule = __decorate([
     (0, common_1.Module)({
-        imports: [typeorm_1.TypeOrmModule.forFeature([parking_spot_entity_1.ParkingSpot, parking_spot_schedule_entity_1.ParkingSpotSchedule]), geocoding_module_1.GeocodingModule, availability_module_1.AvailabilityModule],
+        imports: [
+            typeorm_1.TypeOrmModule.forFeature([parking_spot_entity_1.ParkingSpot, parking_spot_schedule_entity_1.ParkingSpotSchedule]),
+            geocoding_module_1.GeocodingModule,
+            availability_module_1.AvailabilityModule,
+            booking_client_module_1.BookingClientModule,
+        ],
         controllers: [parking_spots_controller_1.ParkingSpotsController],
         providers: [parking_spots_service_1.ParkingSpotsService],
     })

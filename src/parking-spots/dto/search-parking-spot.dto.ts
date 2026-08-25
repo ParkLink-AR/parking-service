@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsLatitude, IsLongitude, IsNumber, IsOptional, Min } from 'class-validator';
+import { IsBoolean, IsISO8601, IsLatitude, IsLongitude, IsNumber, IsOptional, Min, ValidateIf } from 'class-validator';
 
 export class SearchParkingSpotDto {
   // Mobile always resolves a free-text search to coordinates first (via
@@ -31,4 +31,17 @@ export class SearchParkingSpotDto {
   @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()
   covered?: boolean;
+
+  // Ventana horaria deseada (ISO 8601 con offset, ej. "2026-08-24T08:00:00-03:00").
+  // Van juntos: si viene uno tiene que venir el otro (mismo criterio que
+  // address/lat/lng en UpdateParkingSpotDto). Por ahora ParkingSpotsService.search()
+  // los recibe y los ignora -- todavía no hay lógica de disponibilidad acá, esto
+  // sólo declara el contrato para cuando se sume.
+  @ValidateIf((dto: SearchParkingSpotDto) => dto.from !== undefined || dto.to !== undefined)
+  @IsISO8601()
+  from?: string;
+
+  @ValidateIf((dto: SearchParkingSpotDto) => dto.from !== undefined || dto.to !== undefined)
+  @IsISO8601()
+  to?: string;
 }
