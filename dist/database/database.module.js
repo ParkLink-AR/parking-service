@@ -8,13 +8,18 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DatabaseModule = void 0;
 const common_1 = require("@nestjs/common");
+const typeorm_1 = require("@nestjs/typeorm");
+const parking_spot_entity_1 = require("../parking-spots/entities/parking-spot.entity");
+const parking_spot_schedule_entity_1 = require("../parking-spots/entities/parking-spot-schedule.entity");
 const schema_bootstrap_service_1 = require("./schema-bootstrap.service");
+const dev_seed_service_1 = require("./dev-seed.service");
 let DatabaseModule = class DatabaseModule {
 };
 exports.DatabaseModule = DatabaseModule;
 exports.DatabaseModule = DatabaseModule = __decorate([
     (0, common_1.Module)({
-        providers: [schema_bootstrap_service_1.SchemaBootstrapService],
+        imports: [typeorm_1.TypeOrmModule.forFeature([parking_spot_entity_1.ParkingSpot, parking_spot_schedule_entity_1.ParkingSpotSchedule])],
+        providers: [schema_bootstrap_service_1.SchemaBootstrapService, dev_seed_service_1.DevSeedService],
     })
 ], DatabaseModule);
 //# sourceMappingURL=database.module.js.map
