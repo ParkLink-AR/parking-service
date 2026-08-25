@@ -6,9 +6,15 @@ import { ParkingSpotsService } from './parking-spots.service';
 import { ParkingSpotsController } from './parking-spots.controller';
 import { GeocodingModule } from '../geocoding/geocoding.module';
 import { AvailabilityModule } from '../availability/availability.module';
+import { BookingClientModule } from '../booking-client/booking-client.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([ParkingSpot, ParkingSpotSchedule]), GeocodingModule, AvailabilityModule],
+  imports: [
+    TypeOrmModule.forFeature([ParkingSpot, ParkingSpotSchedule]),
+    GeocodingModule,
+    AvailabilityModule,
+    BookingClientModule,
+  ],
   controllers: [ParkingSpotsController],
   providers: [ParkingSpotsService],
 })

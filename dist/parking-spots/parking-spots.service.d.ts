@@ -4,6 +4,7 @@ import { ParkingSpotSchedule } from './entities/parking-spot-schedule.entity';
 import { SearchParkingSpotDto } from './dto/search-parking-spot.dto';
 import { CreateParkingSpotDto } from './dto/create-parking-spot.dto';
 import { UpdateParkingSpotDto } from './dto/update-parking-spot.dto';
+import { BookingClientService } from '../booking-client/booking-client.service';
 export interface ScheduleEntryResponse {
     dayOfWeek: number;
     startHour: number;
@@ -30,7 +31,9 @@ export interface ParkingSpotResponse {
 export declare class ParkingSpotsService {
     private readonly parkingSpotRepo;
     private readonly scheduleRepo;
-    constructor(parkingSpotRepo: Repository<ParkingSpot>, scheduleRepo: Repository<ParkingSpotSchedule>);
+    private readonly bookingClient;
+    private readonly logger;
+    constructor(parkingSpotRepo: Repository<ParkingSpot>, scheduleRepo: Repository<ParkingSpotSchedule>, bookingClient: BookingClientService);
     private scheduleFor;
     private scheduleForMany;
     search(filters: SearchParkingSpotDto): Promise<ParkingSpotResponse[]>;

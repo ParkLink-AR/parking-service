@@ -11,6 +11,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
+var ParkingSpotsService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ParkingSpotsService = void 0;
 const common_1 = require("@nestjs/common");
@@ -18,6 +19,7 @@ const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const parking_spot_entity_1 = require("./entities/parking-spot.entity");
 const parking_spot_schedule_entity_1 = require("./entities/parking-spot-schedule.entity");
+const booking_client_service_1 = require("../booking-client/booking-client.service");
 const BASE_COLUMNS = [
     ['spot.id', 'id'],
     ['spot.ownerId', 'ownerId'],
@@ -89,10 +91,12 @@ function validateNoScheduleOverlap(entries) {
         }
     }
 }
-let ParkingSpotsService = class ParkingSpotsService {
-    constructor(parkingSpotRepo, scheduleRepo) {
+let ParkingSpotsService = ParkingSpotsService_1 = class ParkingSpotsService {
+    constructor(parkingSpotRepo, scheduleRepo, bookingClient) {
         this.parkingSpotRepo = parkingSpotRepo;
         this.scheduleRepo = scheduleRepo;
+        this.bookingClient = bookingClient;
+        this.logger = new common_1.Logger(ParkingSpotsService_1.name);
     }
     async scheduleFor(parkingSpotId) {
         const rows = await this.scheduleRepo.find({ where: { parkingSpotId } });
@@ -137,7 +141,18 @@ let ParkingSpotsService = class ParkingSpotsService {
         }
         const raw = await query.getRawMany();
         const schedules = await this.scheduleForMany(raw.map((row) => row.id));
-        return raw.map((row) => toResponse(row, schedules.get(row.id) ?? [], parseFloat(row.distanceM)));
+        const spots = raw.map((row) => toResponse(row, schedules.get(row.id) ?? [], parseFloat(row.distanceM)));
+        if (filters.from === undefined || filters.to === undefined || spots.length === 0) {
+            return spots;
+        }
+        try {
+            const bookableIDs = new Set(await this.bookingClient.getBookableSpotIds(spots.map((spot) => spot.id), filters.from, filters.to));
+            return spots.filter((spot) => bookableIDs.has(spot.id));
+        }
+        catch (error) {
+            this.logger.warn(`No se pudo filtrar por disponibilidad, booking-service no respondió: ${error}`);
+            return spots;
+        }
     }
     async findById(id) {
         const raw = await selectBaseColumns(this.parkingSpotRepo.createQueryBuilder('spot'))
@@ -217,11 +232,12 @@ let ParkingSpotsService = class ParkingSpotsService {
     }
 };
 exports.ParkingSpotsService = ParkingSpotsService;
-exports.ParkingSpotsService = ParkingSpotsService = __decorate([
+exports.ParkingSpotsService = ParkingSpotsService = ParkingSpotsService_1 = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectRepository)(parking_spot_entity_1.ParkingSpot)),
     __param(1, (0, typeorm_1.InjectRepository)(parking_spot_schedule_entity_1.ParkingSpotSchedule)),
     __metadata("design:paramtypes", [typeorm_2.Repository,
-        typeorm_2.Repository])
+        typeorm_2.Repository,
+        booking_client_service_1.BookingClientService])
 ], ParkingSpotsService);
 //# sourceMappingURL=parking-spots.service.js.map
