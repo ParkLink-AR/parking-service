@@ -220,6 +220,17 @@ let ParkingSpotsService = ParkingSpotsService_1 = class ParkingSpotsService {
             }
         });
     }
+    async findByIds(ids) {
+        if (ids.length === 0)
+            return [];
+        const raw = await selectBaseColumns(this.parkingSpotRepo.createQueryBuilder('spot'))
+            .addSelect('ST_X(spot.location::geometry)', 'lng')
+            .addSelect('ST_Y(spot.location::geometry)', 'lat')
+            .where('spot.id IN (:...ids)', { ids })
+            .getRawMany();
+        const schedules = await this.scheduleForMany(raw.map((row) => row.id));
+        return raw.map((row) => toResponse(row, schedules.get(row.id) ?? []));
+    }
     async findAllByOwner(ownerId) {
         const raw = await selectBaseColumns(this.parkingSpotRepo.createQueryBuilder('spot'))
             .addSelect('ST_X(spot.location::geometry)', 'lng')

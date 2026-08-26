@@ -41,5 +41,6 @@ export declare class ParkingSpotsService {
     create(dto: CreateParkingSpotDto, ownerId: string): Promise<ParkingSpotResponse>;
     update(id: string, dto: UpdateParkingSpotDto): Promise<ParkingSpotResponse>;
     private replaceSchedule;
+    findByIds(ids: string[]): Promise<ParkingSpotResponse[]>;
     findAllByOwner(ownerId: string): Promise<ParkingSpotResponse[]>;
 }

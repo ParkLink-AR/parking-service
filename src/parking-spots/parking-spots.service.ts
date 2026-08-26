@@ -305,6 +305,27 @@ export class ParkingSpotsService {
     });
   }
 
+  /**
+   * Detalle de varias cocheras en un solo request, para callers que ya
+   * tienen una lista de IDs y quieren evitar N llamadas a findById (ej.
+   * mobile armando el historial de reservas de un usuario). A diferencia de
+   * search/findById, NO filtra por status: si reservaste una cochera que el
+   * dueño después pausó o borró, el historial tiene que poder seguir
+   * mostrando su nombre igual.
+   */
+  async findByIds(ids: string[]): Promise<ParkingSpotResponse[]> {
+    if (ids.length === 0) return [];
+
+    const raw = await selectBaseColumns(this.parkingSpotRepo.createQueryBuilder('spot'))
+      .addSelect('ST_X(spot.location::geometry)', 'lng')
+      .addSelect('ST_Y(spot.location::geometry)', 'lat')
+      .where('spot.id IN (:...ids)', { ids })
+      .getRawMany();
+
+    const schedules = await this.scheduleForMany(raw.map((row) => row.id));
+    return raw.map((row) => toResponse(row, schedules.get(row.id) ?? []));
+  }
+
   async findAllByOwner(ownerId: string): Promise<ParkingSpotResponse[]> {
     const raw = await selectBaseColumns(this.parkingSpotRepo.createQueryBuilder('spot'))
       .addSelect('ST_X(spot.location::geometry)', 'lng')

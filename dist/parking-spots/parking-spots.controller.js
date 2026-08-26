@@ -18,6 +18,7 @@ const parking_spots_service_1 = require("./parking-spots.service");
 const search_parking_spot_dto_1 = require("./dto/search-parking-spot.dto");
 const create_parking_spot_dto_1 = require("./dto/create-parking-spot.dto");
 const update_parking_spot_dto_1 = require("./dto/update-parking-spot.dto");
+const parking_spots_batch_query_dto_1 = require("./dto/parking-spots-batch-query.dto");
 const availability_service_1 = require("../availability/availability.service");
 const availability_query_dto_1 = require("../availability/dto/availability-query.dto");
 let ParkingSpotsController = class ParkingSpotsController {
@@ -27,6 +28,9 @@ let ParkingSpotsController = class ParkingSpotsController {
     }
     search(filters) {
         return this.parkingSpotsService.search(filters);
+    }
+    findByIds(query) {
+        return this.parkingSpotsService.findByIds(query.ids);
     }
     findById(id) {
         return this.parkingSpotsService.findById(id);
@@ -55,6 +59,13 @@ __decorate([
     __metadata("design:paramtypes", [search_parking_spot_dto_1.SearchParkingSpotDto]),
     __metadata("design:returntype", void 0)
 ], ParkingSpotsController.prototype, "search", null);
+__decorate([
+    (0, common_1.Get)('parking-spots'),
+    __param(0, (0, common_1.Query)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [parking_spots_batch_query_dto_1.ParkingSpotsBatchQueryDto]),
+    __metadata("design:returntype", void 0)
+], ParkingSpotsController.prototype, "findByIds", null);
 __decorate([
     (0, common_1.Get)('parking-spots/:id'),
     __param(0, (0, common_1.Param)('id')),

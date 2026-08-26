@@ -3,8 +3,11 @@ import { ParkingSpotsService } from './parking-spots.service';
 import { SearchParkingSpotDto } from './dto/search-parking-spot.dto';
 import { CreateParkingSpotDto } from './dto/create-parking-spot.dto';
 import { UpdateParkingSpotDto } from './dto/update-parking-spot.dto';
+import { ParkingSpotsBatchQueryDto } from './dto/parking-spots-batch-query.dto';
 import { AvailabilityService } from '../availability/availability.service';
 import { AvailabilityQueryDto } from '../availability/dto/availability-query.dto';
+
+const MAX_BATCH_IDS = 100;
 
 @Controller()
 export class ParkingSpotsController {
@@ -16,6 +19,19 @@ export class ParkingSpotsController {
   @Get('parking-spots/search')
   search(@Query() filters: SearchParkingSpotDto) {
     return this.parkingSpotsService.search(filters);
+  }
+
+  // Detalle de varias cocheras por id en un solo request -- ver
+  // ParkingSpotsService.findByIds. Sin conflicto de ruteo con
+  // parking-spots/:id: este path no tiene segmento después de
+  // "parking-spots".
+  @Get('parking-spots')
+  findByIds(@Query() query: ParkingSpotsBatchQueryDto) {
+    const ids = query.ids.split(',');
+    if (ids.length > MAX_BATCH_IDS) {
+      throw new BadRequestException(`ids must not contain more than ${MAX_BATCH_IDS} entries.`);
+    }
+    return this.parkingSpotsService.findByIds(ids);
   }
 
   @Get('parking-spots/:id')
