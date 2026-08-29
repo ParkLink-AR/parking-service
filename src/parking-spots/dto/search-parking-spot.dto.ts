@@ -14,12 +14,14 @@ export class SearchParkingSpotDto {
   @IsLongitude()
   lng!: number;
 
-  // Radio de búsqueda en metros. Default: 1500m si no se especifica.
+  // Radio de búsqueda en metros. Opcional: si no se especifica, se devuelven
+  // todas las cocheras activas ordenadas por distancia (comportamiento
+  // "marketplace" para la primera apertura de la app).
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(1)
-  radius?: number = 1500;
+  radius?: number;
 
   @IsOptional()
   @Type(() => Number)

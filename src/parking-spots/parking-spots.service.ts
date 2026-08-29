@@ -173,12 +173,18 @@ export class ParkingSpotsService {
       .addSelect('ST_Y(spot.location::geometry)', 'lat')
       .addSelect(`ST_Distance(spot.location, ${origin})`, 'distanceM')
       .where('spot.status = :status', { status: ParkingSpotStatus.ACTIVE })
-      .andWhere(`ST_DWithin(spot.location, ${origin}, :radius)`, {
-        lat: filters.lat,
-        lng: filters.lng,
-        radius: filters.radius,
-      })
+      .setParameter('lat', filters.lat)
+      .setParameter('lng', filters.lng)
       .orderBy('"distanceM"', 'ASC');
+
+    // Cuando el usuario elige un filtro de distancia se aplica ST_DWithin;
+    // si no hay radio (primera apertura / "ver todo") se devuelven todas las
+    // cocheras activas ordenadas por distancia, igual que un marketplace.
+    if (filters.radius !== undefined) {
+      query.andWhere(`ST_DWithin(spot.location, ${origin}, :radius)`, {
+        radius: filters.radius,
+      });
+    }
 
     if (filters.maxPrice !== undefined) {
       query.andWhere('spot.pricePerHour <= :maxPrice', {
