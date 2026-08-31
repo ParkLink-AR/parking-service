@@ -159,4 +159,17 @@ export class ParkingSpotsController {
     await Promise.all(deletedPhotos.map((url) => this.storageService.deleteObject(url)));
     return { message: 'Cochera eliminada.' };
   }
+
+  // Internal, service-to-service only -- called directly by auth-service
+  // when an owner closes their account for good (same convention as
+  // BookingClientService's calls to booking-service: no gateway route, no
+  // x-user-id, plain HTTP on the docker network). Never wire this into
+  // gateway/app/routes.py, it would let any logged-in user wipe any other
+  // owner's spots by id.
+  @Delete('users/:ownerId/parking-spots')
+  async removeAllForOwner(@Param('ownerId') ownerId: string) {
+    const deletedPhotos = await this.parkingSpotsService.removeAllForOwner(ownerId);
+    await Promise.all(deletedPhotos.map((url) => this.storageService.deleteObject(url)));
+    return { message: 'Cocheras eliminadas.' };
+  }
 }

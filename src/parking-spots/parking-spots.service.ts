@@ -374,6 +374,19 @@ export class ParkingSpotsService {
     return deletedPhotos;
   }
 
+  // Hard delete, unlike remove() above -- called only when an owner closes
+  // their account for good (see auth-service's delete_user /
+  // app/utils/parking_client.py), never from a user-facing route. Rows are
+  // actually gone, not just marked DELETED; schedules cascade at the DB
+  // level (ParkingSpotSchedule's FK has onDelete: 'CASCADE'). Photo URLs are
+  // returned so the caller (which owns StorageService) can clean up R2.
+  async removeAllForOwner(ownerId: string): Promise<string[]> {
+    const spots = await this.parkingSpotRepo.find({ where: { ownerId } });
+    if (spots.length === 0) return [];
+    await this.parkingSpotRepo.remove(spots);
+    return spots.flatMap((spot) => spot.photos ?? []);
+  }
+
   async findAllByOwner(ownerId: string): Promise<ParkingSpotResponse[]> {
     const raw = await selectBaseColumns(this.parkingSpotRepo.createQueryBuilder('spot'))
       .addSelect('ST_X(spot.location::geometry)', 'lng')
