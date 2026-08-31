@@ -360,6 +360,20 @@ export class ParkingSpotsService {
     return this.findById(id);
   }
 
+  // Soft delete (mismo patrón que auth-service usa para cuentas): la fila
+  // queda pero status pasa a DELETED, así que search/findById/findAllByOwner
+  // (todos filtran por ACTIVE) dejan de mostrarla. Las fotos se limpian del
+  // array acá; el caller (controller) es quien tiene el StorageService para
+  // borrar los objetos de R2 -- por eso se devuelven las URLs antes de irse.
+  async remove(id: string, ownerId: string): Promise<string[]> {
+    const spot = await this.getOwnedSpot(id, ownerId);
+    const deletedPhotos = spot.photos ?? [];
+    spot.status = ParkingSpotStatus.DELETED;
+    spot.photos = [];
+    await this.parkingSpotRepo.save(spot);
+    return deletedPhotos;
+  }
+
   async findAllByOwner(ownerId: string): Promise<ParkingSpotResponse[]> {
     const raw = await selectBaseColumns(this.parkingSpotRepo.createQueryBuilder('spot'))
       .addSelect('ST_X(spot.location::geometry)', 'lng')

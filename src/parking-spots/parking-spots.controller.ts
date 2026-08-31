@@ -151,4 +151,12 @@ export class ParkingSpotsController {
     const ownerId = this.requireUserId(userId);
     return this.parkingSpotsService.reorderPhotos(id, ownerId, dto.photos);
   }
+
+  @Delete('parking-spots/:id')
+  async remove(@Param('id') id: string, @Headers('x-user-id') userId?: string) {
+    const ownerId = this.requireUserId(userId);
+    const deletedPhotos = await this.parkingSpotsService.remove(id, ownerId);
+    await Promise.all(deletedPhotos.map((url) => this.storageService.deleteObject(url)));
+    return { message: 'Cochera eliminada.' };
+  }
 }
