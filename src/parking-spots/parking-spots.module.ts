@@ -7,6 +7,7 @@ import { ParkingSpotsController } from './parking-spots.controller';
 import { GeocodingModule } from '../geocoding/geocoding.module';
 import { AvailabilityModule } from '../availability/availability.module';
 import { BookingClientModule } from '../booking-client/booking-client.module';
+import { StorageModule } from '../storage/storage.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { BookingClientModule } from '../booking-client/booking-client.module';
     GeocodingModule,
     AvailabilityModule,
     BookingClientModule,
+    StorageModule,
   ],
   controllers: [ParkingSpotsController],
   providers: [ParkingSpotsService],

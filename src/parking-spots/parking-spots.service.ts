@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { ParkingSpot, ParkingSpotStatus } from './entities/parking-spot.entity';
@@ -14,6 +14,8 @@ export interface ScheduleEntryResponse {
   startHour: number;
   endHour: number;
 }
+
+export const MAX_PHOTOS = 10;
 
 // The `geography` column doesn't come back usable from a plain find()/findOne()
 // (node-postgres returns raw EWKB for it) -- every read path goes through
@@ -303,6 +305,53 @@ export class ParkingSpotsService {
         await manager.save(rows);
       }
     });
+  }
+
+  private async getOwnedSpot(id: string, ownerId: string): Promise<ParkingSpot> {
+    const spot = await this.parkingSpotRepo.findOne({ where: { id } });
+    if (!spot) throw new NotFoundException('Cochera no encontrada');
+    if (spot.ownerId !== ownerId) {
+      throw new ForbiddenException('No sos el dueño de esta cochera.');
+    }
+    return spot;
+  }
+
+  // La portada es siempre photos[0] (misma convención que usa mobile al
+  // mostrar la ficha de una cochera) -- no hay una columna `isCover` aparte.
+  async addPhotos(id: string, ownerId: string, urls: string[]): Promise<ParkingSpotResponse> {
+    const spot = await this.getOwnedSpot(id, ownerId);
+    const current = spot.photos ?? [];
+    if (current.length + urls.length > MAX_PHOTOS) {
+      throw new BadRequestException(`Una cochera puede tener hasta ${MAX_PHOTOS} fotos.`);
+    }
+    spot.photos = [...current, ...urls];
+    await this.parkingSpotRepo.save(spot);
+    return this.findById(id);
+  }
+
+  async removePhoto(id: string, ownerId: string, url: string): Promise<ParkingSpotResponse> {
+    const spot = await this.getOwnedSpot(id, ownerId);
+    spot.photos = (spot.photos ?? []).filter((photo) => photo !== url);
+    await this.parkingSpotRepo.save(spot);
+    return this.findById(id);
+  }
+
+  // Reordena únicamente -- no acepta URLs nuevas ni permite perder alguna
+  // existente, así mobile puede "marcar portada" moviendo una foto al
+  // índice 0 sin poder corromper el set de fotos por accidente.
+  async reorderPhotos(id: string, ownerId: string, orderedUrls: string[]): Promise<ParkingSpotResponse> {
+    const spot = await this.getOwnedSpot(id, ownerId);
+    const current = spot.photos ?? [];
+    const sameSet =
+      orderedUrls.length === current.length &&
+      new Set(orderedUrls).size === current.length &&
+      current.every((photo) => orderedUrls.includes(photo));
+    if (!sameSet) {
+      throw new BadRequestException('El nuevo orden debe contener exactamente las mismas fotos.');
+    }
+    spot.photos = orderedUrls;
+    await this.parkingSpotRepo.save(spot);
+    return this.findById(id);
   }
 
   async findAllByOwner(ownerId: string): Promise<ParkingSpotResponse[]> {
