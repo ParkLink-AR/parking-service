@@ -282,6 +282,10 @@ export class ParkingSpotsService {
         throw new BadRequestException('address, lat and lng must all be provided together to change the location.');
       }
       spot.address = dto.address;
+      // El título se genera de la dirección al crear la cochera (ver
+      // create(), que recibe dto.title ya derivado por mobile) -- si cambia
+      // la ubicación, el título tiene que seguirla o queda desactualizado.
+      spot.title = dto.address.split(',')[0]?.trim() || dto.address;
       // GeoJSON format: TypeORM/PostGIS espera { type: 'Point', coordinates: [lng, lat] }
       spot.location = { type: 'Point', coordinates: [dto.lng, dto.lat] };
     }
