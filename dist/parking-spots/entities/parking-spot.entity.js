@@ -60,6 +60,10 @@ __decorate([
     __metadata("design:type", Boolean)
 ], ParkingSpot.prototype, "covered", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ name: 'instant_booking', default: true }),
+    __metadata("design:type", Boolean)
+], ParkingSpot.prototype, "instantBooking", void 0);
+__decorate([
     (0, typeorm_1.OneToMany)(() => parking_spot_schedule_entity_1.ParkingSpotSchedule, (schedule) => schedule.parkingSpot, { cascade: true }),
     __metadata("design:type", Array)
 ], ParkingSpot.prototype, "schedule", void 0);

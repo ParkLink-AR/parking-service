@@ -13,6 +13,7 @@ export declare class ParkingSpot {
     location: any;
     pricePerHour: number;
     covered: boolean;
+    instantBooking: boolean;
     schedule: ParkingSpotSchedule[];
     photos: string[];
     rules: string[];

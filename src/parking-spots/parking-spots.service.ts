@@ -38,6 +38,11 @@ export interface ParkingSpotResponse {
   createdAt: Date;
   updatedAt: Date;
   distanceMeters?: number;
+  // Real numbers from booking-service's reviews table, merged in by
+  // applyRatings() after toResponse() -- 0/0 here is just the fallback for
+  // when that call fails, not the "no reviews yet" case (see applyRatings).
+  rating: number;
+  reviewCount: number;
 }
 
 // Explicit aliases (rather than getRawAndEntities()'s auto-generated ones)
@@ -88,6 +93,8 @@ function toResponse(
     status: raw.status,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
+    rating: 0,
+    reviewCount: 0,
     ...(distanceMeters !== undefined ? { distanceMeters: Math.round(distanceMeters) } : {}),
   };
 }
@@ -167,6 +174,24 @@ export class ParkingSpotsService {
   }
 
   /**
+   * Mezcla el rating/reviewCount real (de la tabla reviews en booking-service) en cada
+   * respuesta, en un solo llamado batch. Muta y devuelve el mismo array -- si falla,
+   * los spots se quedan con el 0/0 default de toResponse() en vez de romper el pedido.
+   */
+  private async applyRatings(spots: ParkingSpotResponse[]): Promise<ParkingSpotResponse[]> {
+    if (spots.length === 0) return spots;
+    const ratings = await this.bookingClient.getRatings(spots.map((spot) => spot.id));
+    for (const spot of spots) {
+      const rating = ratings[spot.id];
+      if (rating) {
+        spot.rating = rating.rating;
+        spot.reviewCount = rating.reviewCount;
+      }
+    }
+    return spots;
+  }
+
+  /**
    * Búsqueda geoespacial usando ST_DWithin de PostGIS.
    * ST_DWithin compara la distancia real (en metros, gracias al tipo `geography`)
    * entre la cochera y el punto de búsqueda, sin necesidad de llamar a ninguna API externa.
@@ -204,6 +229,7 @@ export class ParkingSpotsService {
     const raw = await query.getRawMany();
     const schedules = await this.scheduleForMany(raw.map((row) => row.id));
     const spots = raw.map((row) => toResponse(row, schedules.get(row.id) ?? [], parseFloat(row.distanceM)));
+    await this.applyRatings(spots);
 
     if (filters.from === undefined || filters.to === undefined || spots.length === 0) {
       return spots;
@@ -243,7 +269,9 @@ export class ParkingSpotsService {
       throw new NotFoundException('Cochera no encontrada');
     }
 
-    return toResponse(raw, await this.scheduleFor(id));
+    const spot = toResponse(raw, await this.scheduleFor(id));
+    await this.applyRatings([spot]);
+    return spot;
   }
 
   /**
@@ -433,6 +461,8 @@ export class ParkingSpotsService {
       .getRawMany();
 
     const schedules = await this.scheduleForMany(raw.map((row) => row.id));
-    return raw.map((row) => toResponse(row, schedules.get(row.id) ?? []));
+    const spots = raw.map((row) => toResponse(row, schedules.get(row.id) ?? []));
+    await this.applyRatings(spots);
+    return spots;
   }
 }

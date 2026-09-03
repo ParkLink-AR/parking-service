@@ -13,9 +13,6 @@ exports.SearchParkingSpotDto = void 0;
 const class_transformer_1 = require("class-transformer");
 const class_validator_1 = require("class-validator");
 class SearchParkingSpotDto {
-    constructor() {
-        this.radius = 1500;
-    }
 }
 exports.SearchParkingSpotDto = SearchParkingSpotDto;
 __decorate([

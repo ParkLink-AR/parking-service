@@ -15,6 +15,15 @@ interface BookableSpotsResponse {
   bookable_parking_spot_ids: string[];
 }
 
+interface SpotRatingsResponse {
+  ratings: Record<string, { average_rating: number; count: number }>;
+}
+
+export interface SpotRating {
+  rating: number;
+  reviewCount: number;
+}
+
 @Injectable()
 export class BookingClientService {
   constructor(
@@ -69,6 +78,33 @@ export class BookingClientService {
       return response.data.bookable_parking_spot_ids;
     } catch {
       throw new HttpException('booking-service is unavailable', HttpStatus.BAD_GATEWAY);
+    }
+  }
+
+  /**
+   * Real average rating + review count for each of parkingSpotIds, from booking-service's
+   * reviews table. Unlike getBookableSpotIds above, a failure here degrades to an empty
+   * map instead of throwing -- a rating is cosmetic, not worth failing the whole search
+   * over if booking-service is briefly unavailable.
+   */
+  async getRatings(parkingSpotIds: string[]): Promise<Record<string, SpotRating>> {
+    if (parkingSpotIds.length === 0) return {};
+
+    const baseUrl = this.configService.get<string>('BOOKING_SERVICE_URL');
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post<SpotRatingsResponse>(`${baseUrl}/parking-spots/ratings`, {
+          parking_spot_ids: parkingSpotIds,
+        }),
+      );
+      const ratings: Record<string, SpotRating> = {};
+      for (const [spotId, summary] of Object.entries(response.data.ratings)) {
+        ratings[spotId] = { rating: summary.average_rating, reviewCount: summary.count };
+      }
+      return ratings;
+    } catch {
+      return {};
     }
   }
 }

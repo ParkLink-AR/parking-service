@@ -16,6 +16,7 @@ const parking_spots_controller_1 = require("./parking-spots.controller");
 const geocoding_module_1 = require("../geocoding/geocoding.module");
 const availability_module_1 = require("../availability/availability.module");
 const booking_client_module_1 = require("../booking-client/booking-client.module");
+const storage_module_1 = require("../storage/storage.module");
 let ParkingSpotsModule = class ParkingSpotsModule {
 };
 exports.ParkingSpotsModule = ParkingSpotsModule;
@@ -26,9 +27,11 @@ exports.ParkingSpotsModule = ParkingSpotsModule = __decorate([
             geocoding_module_1.GeocodingModule,
             availability_module_1.AvailabilityModule,
             booking_client_module_1.BookingClientModule,
+            storage_module_1.StorageModule,
         ],
         controllers: [parking_spots_controller_1.ParkingSpotsController],
         providers: [parking_spots_service_1.ParkingSpotsService],
+        exports: [parking_spots_service_1.ParkingSpotsService],
     })
 ], ParkingSpotsModule);
 //# sourceMappingURL=parking-spots.module.js.map

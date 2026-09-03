@@ -49,6 +49,24 @@ let BookingClientService = class BookingClientService {
             throw new common_1.HttpException('booking-service is unavailable', common_1.HttpStatus.BAD_GATEWAY);
         }
     }
+    async getRatings(parkingSpotIds) {
+        if (parkingSpotIds.length === 0)
+            return {};
+        const baseUrl = this.configService.get('BOOKING_SERVICE_URL');
+        try {
+            const response = await (0, rxjs_1.firstValueFrom)(this.httpService.post(`${baseUrl}/parking-spots/ratings`, {
+                parking_spot_ids: parkingSpotIds,
+            }));
+            const ratings = {};
+            for (const [spotId, summary] of Object.entries(response.data.ratings)) {
+                ratings[spotId] = { rating: summary.average_rating, reviewCount: summary.count };
+            }
+            return ratings;
+        }
+        catch {
+            return {};
+        }
+    }
 };
 exports.BookingClientService = BookingClientService;
 exports.BookingClientService = BookingClientService = __decorate([

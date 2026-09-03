@@ -13,13 +13,14 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 };
 var ParkingSpotsService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ParkingSpotsService = void 0;
+exports.ParkingSpotsService = exports.MAX_PHOTOS = void 0;
 const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const parking_spot_entity_1 = require("./entities/parking-spot.entity");
 const parking_spot_schedule_entity_1 = require("./entities/parking-spot-schedule.entity");
 const booking_client_service_1 = require("../booking-client/booking-client.service");
+exports.MAX_PHOTOS = 10;
 const BASE_COLUMNS = [
     ['spot.id', 'id'],
     ['spot.ownerId', 'ownerId'],
@@ -28,6 +29,7 @@ const BASE_COLUMNS = [
     ['spot.address', 'address'],
     ['spot.pricePerHour', 'pricePerHour'],
     ['spot.covered', 'covered'],
+    ['spot.instantBooking', 'instantBooking'],
     ['spot.photos', 'photos'],
     ['spot.rules', 'rules'],
     ['spot.status', 'status'],
@@ -52,12 +54,15 @@ function toResponse(raw, schedule, distanceMeters) {
         lng: parseFloat(raw.lng),
         pricePerHour: parseFloat(raw.pricePerHour),
         covered: raw.covered,
+        instantBooking: raw.instantBooking,
         schedule,
         photos: raw.photos ?? [],
         rules: raw.rules ?? [],
         status: raw.status,
         createdAt: raw.createdAt,
         updatedAt: raw.updatedAt,
+        rating: 0,
+        reviewCount: 0,
         ...(distanceMeters !== undefined ? { distanceMeters: Math.round(distanceMeters) } : {}),
     };
 }
@@ -118,6 +123,19 @@ let ParkingSpotsService = ParkingSpotsService_1 = class ParkingSpotsService {
         }
         return result;
     }
+    async applyRatings(spots) {
+        if (spots.length === 0)
+            return spots;
+        const ratings = await this.bookingClient.getRatings(spots.map((spot) => spot.id));
+        for (const spot of spots) {
+            const rating = ratings[spot.id];
+            if (rating) {
+                spot.rating = rating.rating;
+                spot.reviewCount = rating.reviewCount;
+            }
+        }
+        return spots;
+    }
     async search(filters) {
         const origin = `ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography`;
         const query = selectBaseColumns(this.parkingSpotRepo.createQueryBuilder('spot'))
@@ -125,12 +143,14 @@ let ParkingSpotsService = ParkingSpotsService_1 = class ParkingSpotsService {
             .addSelect('ST_Y(spot.location::geometry)', 'lat')
             .addSelect(`ST_Distance(spot.location, ${origin})`, 'distanceM')
             .where('spot.status = :status', { status: parking_spot_entity_1.ParkingSpotStatus.ACTIVE })
-            .andWhere(`ST_DWithin(spot.location, ${origin}, :radius)`, {
-            lat: filters.lat,
-            lng: filters.lng,
-            radius: filters.radius,
-        })
+            .setParameter('lat', filters.lat)
+            .setParameter('lng', filters.lng)
             .orderBy('"distanceM"', 'ASC');
+        if (filters.radius !== undefined) {
+            query.andWhere(`ST_DWithin(spot.location, ${origin}, :radius)`, {
+                radius: filters.radius,
+            });
+        }
         if (filters.maxPrice !== undefined) {
             query.andWhere('spot.pricePerHour <= :maxPrice', {
                 maxPrice: filters.maxPrice,
@@ -142,6 +162,7 @@ let ParkingSpotsService = ParkingSpotsService_1 = class ParkingSpotsService {
         const raw = await query.getRawMany();
         const schedules = await this.scheduleForMany(raw.map((row) => row.id));
         const spots = raw.map((row) => toResponse(row, schedules.get(row.id) ?? [], parseFloat(row.distanceM)));
+        await this.applyRatings(spots);
         if (filters.from === undefined || filters.to === undefined || spots.length === 0) {
             return spots;
         }
@@ -159,12 +180,14 @@ let ParkingSpotsService = ParkingSpotsService_1 = class ParkingSpotsService {
             .addSelect('ST_X(spot.location::geometry)', 'lng')
             .addSelect('ST_Y(spot.location::geometry)', 'lat')
             .where('spot.id = :id', { id })
-            .andWhere('spot.status = :status', { status: parking_spot_entity_1.ParkingSpotStatus.ACTIVE })
+            .andWhere('spot.status IN (:...statuses)', { statuses: [parking_spot_entity_1.ParkingSpotStatus.ACTIVE, parking_spot_entity_1.ParkingSpotStatus.PAUSED] })
             .getRawOne();
         if (!raw) {
             throw new common_1.NotFoundException('Cochera no encontrada');
         }
-        return toResponse(raw, await this.scheduleFor(id));
+        const spot = toResponse(raw, await this.scheduleFor(id));
+        await this.applyRatings([spot]);
+        return spot;
     }
     async create(dto, ownerId) {
         if (dto.schedule)
@@ -175,6 +198,7 @@ let ParkingSpotsService = ParkingSpotsService_1 = class ParkingSpotsService {
             address: dto.address,
             pricePerHour: dto.pricePerHour,
             covered: dto.covered ?? false,
+            instantBooking: dto.instantBooking ?? true,
             rules: dto.rules ?? [],
             ownerId,
             location: {
@@ -196,12 +220,15 @@ let ParkingSpotsService = ParkingSpotsService_1 = class ParkingSpotsService {
             spot.description = dto.description;
         if (dto.covered !== undefined)
             spot.covered = dto.covered;
+        if (dto.instantBooking !== undefined)
+            spot.instantBooking = dto.instantBooking;
         const changingLocation = dto.address !== undefined || dto.lat !== undefined || dto.lng !== undefined;
         if (changingLocation) {
             if (dto.address === undefined || dto.lat === undefined || dto.lng === undefined) {
                 throw new common_1.BadRequestException('address, lat and lng must all be provided together to change the location.');
             }
             spot.address = dto.address;
+            spot.title = dto.address.split(',')[0]?.trim() || dto.address;
             spot.location = { type: 'Point', coordinates: [dto.lng, dto.lat] };
         }
         await this.parkingSpotRepo.save(spot);
@@ -220,15 +247,83 @@ let ParkingSpotsService = ParkingSpotsService_1 = class ParkingSpotsService {
             }
         });
     }
+    async getOwnedSpot(id, ownerId) {
+        const spot = await this.parkingSpotRepo.findOne({ where: { id } });
+        if (!spot)
+            throw new common_1.NotFoundException('Cochera no encontrada');
+        if (spot.ownerId !== ownerId) {
+            throw new common_1.ForbiddenException('No sos el dueño de esta cochera.');
+        }
+        return spot;
+    }
+    async addPhotos(id, ownerId, urls) {
+        const spot = await this.getOwnedSpot(id, ownerId);
+        const current = spot.photos ?? [];
+        if (current.length + urls.length > exports.MAX_PHOTOS) {
+            throw new common_1.BadRequestException(`Una cochera puede tener hasta ${exports.MAX_PHOTOS} fotos.`);
+        }
+        spot.photos = [...current, ...urls];
+        await this.parkingSpotRepo.save(spot);
+        return this.findById(id);
+    }
+    async removePhoto(id, ownerId, url) {
+        const spot = await this.getOwnedSpot(id, ownerId);
+        spot.photos = (spot.photos ?? []).filter((photo) => photo !== url);
+        await this.parkingSpotRepo.save(spot);
+        return this.findById(id);
+    }
+    async reorderPhotos(id, ownerId, orderedUrls) {
+        const spot = await this.getOwnedSpot(id, ownerId);
+        const current = spot.photos ?? [];
+        const sameSet = orderedUrls.length === current.length &&
+            new Set(orderedUrls).size === current.length &&
+            current.every((photo) => orderedUrls.includes(photo));
+        if (!sameSet) {
+            throw new common_1.BadRequestException('El nuevo orden debe contener exactamente las mismas fotos.');
+        }
+        spot.photos = orderedUrls;
+        await this.parkingSpotRepo.save(spot);
+        return this.findById(id);
+    }
+    async setStatus(id, ownerId, status) {
+        const spot = await this.getOwnedSpot(id, ownerId);
+        spot.status = status;
+        await this.parkingSpotRepo.save(spot);
+        return this.findById(id);
+    }
+    async remove(id, ownerId) {
+        const spot = await this.getOwnedSpot(id, ownerId);
+        const today = new Date().toISOString().slice(0, 10);
+        const farFuture = new Date(Date.now() + 5 * 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        const activeBookings = await this.bookingClient.getActiveBookings(id, today, farFuture);
+        if (activeBookings.length > 0) {
+            throw new common_1.ConflictException('No se puede eliminar: hay reservas programadas que no finalizaron.');
+        }
+        const deletedPhotos = spot.photos ?? [];
+        spot.status = parking_spot_entity_1.ParkingSpotStatus.DELETED;
+        spot.photos = [];
+        await this.parkingSpotRepo.save(spot);
+        return deletedPhotos;
+    }
+    async removeAllForOwner(ownerId) {
+        const spots = await this.parkingSpotRepo.find({ where: { ownerId } });
+        if (spots.length === 0)
+            return [];
+        await this.parkingSpotRepo.remove(spots);
+        return spots.flatMap((spot) => spot.photos ?? []);
+    }
     async findAllByOwner(ownerId) {
         const raw = await selectBaseColumns(this.parkingSpotRepo.createQueryBuilder('spot'))
             .addSelect('ST_X(spot.location::geometry)', 'lng')
             .addSelect('ST_Y(spot.location::geometry)', 'lat')
             .where('spot.ownerId = :ownerId', { ownerId })
+            .andWhere('spot.status != :deleted', { deleted: parking_spot_entity_1.ParkingSpotStatus.DELETED })
             .orderBy('spot.createdAt', 'DESC')
             .getRawMany();
         const schedules = await this.scheduleForMany(raw.map((row) => row.id));
-        return raw.map((row) => toResponse(row, schedules.get(row.id) ?? []));
+        const spots = raw.map((row) => toResponse(row, schedules.get(row.id) ?? []));
+        await this.applyRatings(spots);
+        return spots;
     }
 };
 exports.ParkingSpotsService = ParkingSpotsService;
