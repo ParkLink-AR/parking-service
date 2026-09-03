@@ -23,16 +23,19 @@ const SEED_SPOTS = [
     lng: -58.4557,
     pricePerHour: 900,
     covered: true,
+    capacity: 1,
     schedule: [0, 1, 2, 3, 4].map((dayOfWeek) => ({ dayOfWeek, startHour: 8, endHour: 22 })),
   },
   {
     id: '00000000-0000-0000-0000-0000000000a2',
-    title: 'Cochera Cabildo 3050',
+    title: 'Playa Cabildo 3050',
     address: 'Av. Cabildo 3050, Belgrano, CABA',
     lat: -34.5639,
     lng: -58.4551,
     pricePerHour: 650,
     covered: false,
+    // Playa de estacionamiento: 3 lugares contra el mismo id.
+    capacity: 3,
     schedule: [0, 1, 2, 3, 4, 5].map((dayOfWeek) => ({ dayOfWeek, startHour: 7, endHour: 23 })),
   },
 ];
@@ -62,6 +65,7 @@ export class DevSeedService implements OnModuleInit {
         address: seed.address,
         pricePerHour: seed.pricePerHour,
         covered: seed.covered,
+        capacity: seed.capacity,
         rules: [],
         status: ParkingSpotStatus.ACTIVE,
         location: { type: 'Point', coordinates: [seed.lng, seed.lat] },

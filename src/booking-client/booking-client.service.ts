@@ -24,6 +24,11 @@ export interface SpotRating {
   reviewCount: number;
 }
 
+export interface SpotCapacity {
+  id: string;
+  capacity: number;
+}
+
 @Injectable()
 export class BookingClientService {
   constructor(
@@ -57,20 +62,21 @@ export class BookingClientService {
   }
 
   /**
-   * Asks booking-service which of parkingSpotIds have no booking occupying [start, end).
-   * start/end are full RFC3339 timestamps -- booking-service's POST /parking-spots/bookable
-   * only checks existing bookings, not published hours (that's the spot's own schedule,
-   * which parking-service already has locally and doesn't need to ask for).
+   * Asks booking-service which of the given spots still have room in [start, end) --
+   * i.e. fewer active bookings than the spot's `capacity` (a "playa" with capacity N
+   * stays bookable until N reservations overlap). start/end are full RFC3339 timestamps;
+   * booking-service only checks existing bookings here, not published hours (that's the
+   * spot's own schedule, which parking-service already has locally).
    */
-  async getBookableSpotIds(parkingSpotIds: string[], start: string, end: string): Promise<string[]> {
-    if (parkingSpotIds.length === 0) return [];
+  async getBookableSpotIds(spots: SpotCapacity[], start: string, end: string): Promise<string[]> {
+    if (spots.length === 0) return [];
 
     const baseUrl = this.configService.get<string>('BOOKING_SERVICE_URL');
 
     try {
       const response = await firstValueFrom(
         this.httpService.post<BookableSpotsResponse>(`${baseUrl}/parking-spots/bookable`, {
-          parking_spot_ids: parkingSpotIds,
+          spots,
           start,
           end,
         }),

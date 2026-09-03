@@ -2,12 +2,14 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
+  IsInt,
   IsLatitude,
   IsLongitude,
   IsNumber,
   IsOptional,
-  IsString,
+  Max,
   Min,
+  IsString,
   ValidateNested,
 } from 'class-validator';
 import { ScheduleEntryDto } from './schedule-entry.dto';
@@ -40,6 +42,14 @@ export class CreateParkingSpotDto {
   @IsOptional()
   @IsBoolean()
   covered?: boolean;
+
+  // Lugares idénticos que alquila esta cochera contra el mismo id (playa de
+  // estacionamiento). Omitido = 1 (cochera común).
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(200)
+  capacity?: number;
 
   @IsOptional()
   @IsBoolean()

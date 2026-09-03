@@ -48,6 +48,50 @@ export function subtractIntervals(baseWindows: TimeWindow[], occupiedIntervals: 
   return free;
 }
 
+/**
+ * Like subtractIntervals, but the spot has `capacity` identical places (a "playa"):
+ * a sub-window stays free while *fewer than* `capacity` occupied intervals overlap it.
+ * capacity <= 1 is exactly subtractIntervals. Adjacent free slices are merged back.
+ */
+export function subtractIntervalsWithCapacity(
+  baseWindows: TimeWindow[],
+  occupiedIntervals: TimeWindow[],
+  capacity: number,
+): TimeWindow[] {
+  if (capacity <= 1) return subtractIntervals(baseWindows, occupiedIntervals);
+
+  const free: TimeWindow[] = [];
+
+  for (const base of baseWindows) {
+    const baseStart = base.start.getTime();
+    const baseEnd = base.end.getTime();
+
+    // Clip every occupied interval to this base window; keep only real ones.
+    const clipped = occupiedIntervals
+      .map((o) => ({ start: Math.max(o.start.getTime(), baseStart), end: Math.min(o.end.getTime(), baseEnd) }))
+      .filter((o) => o.start < o.end);
+
+    // Event points partition the base window into slices with a constant overlap count.
+    const points = Array.from(new Set([baseStart, baseEnd, ...clipped.flatMap((o) => [o.start, o.end])])).sort(
+      (a, b) => a - b,
+    );
+
+    for (let i = 0; i < points.length - 1; i++) {
+      const sliceStart = points[i];
+      const sliceEnd = points[i + 1];
+      if (sliceStart >= sliceEnd) continue;
+      const mid = (sliceStart + sliceEnd) / 2;
+      const concurrent = clipped.filter((o) => o.start <= mid && mid < o.end).length;
+      if (concurrent < capacity) {
+        free.push({ start: new Date(sliceStart), end: new Date(sliceEnd) });
+      }
+    }
+  }
+
+  free.sort((a, b) => a.start.getTime() - b.start.getTime());
+  return mergeIntervals(free);
+}
+
 /** Classifies a day as closed (no published base), full (base fully occupied), or available. */
 export function determineStatus(baseIsEmpty: boolean, freeWindows: TimeWindow[]): AvailabilityStatus {
   if (baseIsEmpty) return AvailabilityStatus.Closed;

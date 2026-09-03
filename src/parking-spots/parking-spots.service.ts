@@ -31,6 +31,8 @@ export interface ParkingSpotResponse {
   pricePerHour: number;
   covered: boolean;
   instantBooking: boolean;
+  // Lugares idénticos que se alquilan contra este mismo id (playa). 1 = cochera común.
+  capacity: number;
   schedule: ScheduleEntryResponse[];
   photos: string[];
   rules: string[];
@@ -57,6 +59,7 @@ const BASE_COLUMNS: Array<[string, string]> = [
   ['spot.pricePerHour', 'pricePerHour'],
   ['spot.covered', 'covered'],
   ['spot.instantBooking', 'instantBooking'],
+  ['spot.capacity', 'capacity'],
   ['spot.photos', 'photos'],
   ['spot.rules', 'rules'],
   ['spot.status', 'status'],
@@ -87,6 +90,7 @@ function toResponse(
     pricePerHour: parseFloat(raw.pricePerHour),
     covered: raw.covered,
     instantBooking: raw.instantBooking,
+    capacity: Number(raw.capacity ?? 1),
     schedule,
     photos: raw.photos ?? [],
     rules: raw.rules ?? [],
@@ -238,7 +242,7 @@ export class ParkingSpotsService {
     try {
       const bookableIDs = new Set(
         await this.bookingClient.getBookableSpotIds(
-          spots.map((spot) => spot.id),
+          spots.map((spot) => ({ id: spot.id, capacity: spot.capacity })),
           filters.from,
           filters.to,
         ),
@@ -290,6 +294,7 @@ export class ParkingSpotsService {
       pricePerHour: dto.pricePerHour,
       covered: dto.covered ?? false,
       instantBooking: dto.instantBooking ?? true,
+      capacity: dto.capacity ?? 1,
       rules: dto.rules ?? [],
       ownerId,
       // GeoJSON format: TypeORM/PostGIS espera { type: 'Point', coordinates: [lng, lat] }
@@ -312,6 +317,7 @@ export class ParkingSpotsService {
     if (dto.description !== undefined) spot.description = dto.description;
     if (dto.covered !== undefined) spot.covered = dto.covered;
     if (dto.instantBooking !== undefined) spot.instantBooking = dto.instantBooking;
+    if (dto.capacity !== undefined) spot.capacity = dto.capacity;
 
     const changingLocation = dto.address !== undefined || dto.lat !== undefined || dto.lng !== undefined;
     if (changingLocation) {

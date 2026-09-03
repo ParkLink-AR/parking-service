@@ -58,6 +58,14 @@ export class ParkingSpot {
   @Column({ name: 'instant_booking', default: true })
   instantBooking!: boolean;
 
+  // Cuántos lugares idénticos alquila esta cochera contra el mismo id (caso
+  // "playa de estacionamiento"). capacity=1 es una cochera común. Hasta
+  // `capacity` reservas activas pueden solaparse en la misma franja --
+  // booking-service es quien lo hace cumplir; acá sólo se guarda y se
+  // reenvía. El CHECK (capacity >= 1) lo agrega SchemaBootstrapService.
+  @Column({ type: 'int', default: 1 })
+  capacity!: number;
+
   // Horario semanal recurrente, una fila por franja publicada (ver
   // ParkingSpotSchedule). cascade:true sólo cubre el insert inicial al
   // crear la cochera (ParkingSpotsService.create) -- reemplazar el horario
