@@ -19,5 +19,6 @@ import { StorageModule } from '../storage/storage.module';
   ],
   controllers: [ParkingSpotsController],
   providers: [ParkingSpotsService],
+  exports: [ParkingSpotsService],
 })
 export class ParkingSpotsModule {}
