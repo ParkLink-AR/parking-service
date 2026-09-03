@@ -16,6 +16,10 @@ export class UpdateParkingSpotDto {
   @IsBoolean()
   covered?: boolean;
 
+  @IsOptional()
+  @IsBoolean()
+  instantBooking?: boolean;
+
   // Reemplazo completo del horario semanal (no un patch incremental por
   // día) -- ver ParkingSpotsService.replaceSchedule.
   @IsOptional()

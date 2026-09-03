@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { ParkingSpot, ParkingSpotStatus } from './entities/parking-spot.entity';
@@ -30,6 +30,7 @@ export interface ParkingSpotResponse {
   lng: number;
   pricePerHour: number;
   covered: boolean;
+  instantBooking: boolean;
   schedule: ScheduleEntryResponse[];
   photos: string[];
   rules: string[];
@@ -50,6 +51,7 @@ const BASE_COLUMNS: Array<[string, string]> = [
   ['spot.address', 'address'],
   ['spot.pricePerHour', 'pricePerHour'],
   ['spot.covered', 'covered'],
+  ['spot.instantBooking', 'instantBooking'],
   ['spot.photos', 'photos'],
   ['spot.rules', 'rules'],
   ['spot.status', 'status'],
@@ -79,6 +81,7 @@ function toResponse(
     lng: parseFloat(raw.lng),
     pricePerHour: parseFloat(raw.pricePerHour),
     covered: raw.covered,
+    instantBooking: raw.instantBooking,
     schedule,
     photos: raw.photos ?? [],
     rules: raw.rules ?? [],
@@ -225,11 +228,15 @@ export class ParkingSpotsService {
   }
 
   async findById(id: string): Promise<ParkingSpotResponse> {
+    // ACTIVE o PAUSED (no DELETED): una cochera pausada deja de aparecer en
+    // search(), pero su detalle sigue resolviendo -- lo necesitan las
+    // reservas ya hechas y los favoritos de quien la guardó antes de que el
+    // dueño la pausara.
     const raw = await selectBaseColumns(this.parkingSpotRepo.createQueryBuilder('spot'))
       .addSelect('ST_X(spot.location::geometry)', 'lng')
       .addSelect('ST_Y(spot.location::geometry)', 'lat')
       .where('spot.id = :id', { id })
-      .andWhere('spot.status = :status', { status: ParkingSpotStatus.ACTIVE })
+      .andWhere('spot.status IN (:...statuses)', { statuses: [ParkingSpotStatus.ACTIVE, ParkingSpotStatus.PAUSED] })
       .getRawOne();
 
     if (!raw) {
@@ -254,6 +261,7 @@ export class ParkingSpotsService {
       address: dto.address,
       pricePerHour: dto.pricePerHour,
       covered: dto.covered ?? false,
+      instantBooking: dto.instantBooking ?? true,
       rules: dto.rules ?? [],
       ownerId,
       // GeoJSON format: TypeORM/PostGIS espera { type: 'Point', coordinates: [lng, lat] }
@@ -275,6 +283,7 @@ export class ParkingSpotsService {
     if (dto.pricePerHour !== undefined) spot.pricePerHour = dto.pricePerHour;
     if (dto.description !== undefined) spot.description = dto.description;
     if (dto.covered !== undefined) spot.covered = dto.covered;
+    if (dto.instantBooking !== undefined) spot.instantBooking = dto.instantBooking;
 
     const changingLocation = dto.address !== undefined || dto.lat !== undefined || dto.lng !== undefined;
     if (changingLocation) {
@@ -364,13 +373,33 @@ export class ParkingSpotsService {
     return this.findById(id);
   }
 
+  // Pausar oculta la cochera de search() (deja de poder reservarse de
+  // nuevo) sin tocar reservas ya hechas -- findById() sigue resolviéndola.
+  // Reactivar es la misma operación al revés.
+  async setStatus(id: string, ownerId: string, status: ParkingSpotStatus.ACTIVE | ParkingSpotStatus.PAUSED): Promise<ParkingSpotResponse> {
+    const spot = await this.getOwnedSpot(id, ownerId);
+    spot.status = status;
+    await this.parkingSpotRepo.save(spot);
+    return this.findById(id);
+  }
+
   // Soft delete (mismo patrón que auth-service usa para cuentas): la fila
   // queda pero status pasa a DELETED, así que search/findById/findAllByOwner
-  // (todos filtran por ACTIVE) dejan de mostrarla. Las fotos se limpian del
-  // array acá; el caller (controller) es quien tiene el StorageService para
-  // borrar los objetos de R2 -- por eso se devuelven las URLs antes de irse.
+  // dejan de mostrarla. Las fotos se limpian del array acá; el caller
+  // (controller) es quien tiene el StorageService para borrar los objetos
+  // de R2 -- por eso se devuelven las URLs antes de irse. Bloqueado si
+  // quedan reservas programadas sin terminar (incluye PENDING_OWNER_APPROVAL,
+  // ver get_active_bookings.go en booking-service).
   async remove(id: string, ownerId: string): Promise<string[]> {
     const spot = await this.getOwnedSpot(id, ownerId);
+
+    const today = new Date().toISOString().slice(0, 10);
+    const farFuture = new Date(Date.now() + 5 * 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const activeBookings = await this.bookingClient.getActiveBookings(id, today, farFuture);
+    if (activeBookings.length > 0) {
+      throw new ConflictException('No se puede eliminar: hay reservas programadas que no finalizaron.');
+    }
+
     const deletedPhotos = spot.photos ?? [];
     spot.status = ParkingSpotStatus.DELETED;
     spot.photos = [];
@@ -392,10 +421,14 @@ export class ParkingSpotsService {
   }
 
   async findAllByOwner(ownerId: string): Promise<ParkingSpotResponse[]> {
+    // ACTIVE y PAUSED, no DELETED -- el dueño tiene que ver sus cocheras
+    // pausadas acá para poder reactivarlas, pero una borrada ya no existe
+    // para él tampoco.
     const raw = await selectBaseColumns(this.parkingSpotRepo.createQueryBuilder('spot'))
       .addSelect('ST_X(spot.location::geometry)', 'lng')
       .addSelect('ST_Y(spot.location::geometry)', 'lat')
       .where('spot.ownerId = :ownerId', { ownerId })
+      .andWhere('spot.status != :deleted', { deleted: ParkingSpotStatus.DELETED })
       .orderBy('spot.createdAt', 'DESC')
       .getRawMany();
 

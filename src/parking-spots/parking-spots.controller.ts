@@ -6,6 +6,7 @@ import {
   Headers,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Put,
   Query,
@@ -19,6 +20,7 @@ import { MAX_PHOTOS, ParkingSpotsService } from './parking-spots.service';
 import { SearchParkingSpotDto } from './dto/search-parking-spot.dto';
 import { CreateParkingSpotDto } from './dto/create-parking-spot.dto';
 import { UpdateParkingSpotDto } from './dto/update-parking-spot.dto';
+import { UpdateStatusDto } from './dto/update-status.dto';
 import { DeletePhotoDto } from './dto/delete-photo.dto';
 import { ReorderPhotosDto } from './dto/reorder-photos.dto';
 import { AvailabilityService } from '../availability/availability.service';
@@ -92,6 +94,15 @@ export class ParkingSpotsController {
   @Get('users/:id/parking-spots')
   findAllByOwner(@Param('id') id: string) {
     return this.parkingSpotsService.findAllByOwner(id);
+  }
+
+  @Patch('parking-spots/:id/status')
+  setStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdateStatusDto,
+    @Headers('x-user-id') userId?: string,
+  ) {
+    return this.parkingSpotsService.setStatus(id, this.requireUserId(userId), dto.status);
   }
 
   @Post('parking-spots/:id/photos')

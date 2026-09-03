@@ -51,6 +51,13 @@ export class ParkingSpot {
   @Column({ default: false })
   covered!: boolean;
 
+  // Si es false, una reserva pagada no pasa a CONFIRMED sola -- queda
+  // PENDING_OWNER_APPROVAL hasta que el dueño la apruebe o la rechace (ver
+  // booking-service's ConfirmBookingUseCase). Default true para no cambiar
+  // el comportamiento de las cocheras que ya existen.
+  @Column({ name: 'instant_booking', default: true })
+  instantBooking!: boolean;
+
   // Horario semanal recurrente, una fila por franja publicada (ver
   // ParkingSpotSchedule). cascade:true sólo cubre el insert inicial al
   // crear la cochera (ParkingSpotsService.create) -- reemplazar el horario

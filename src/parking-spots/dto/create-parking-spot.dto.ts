@@ -42,6 +42,10 @@ export class CreateParkingSpotDto {
   covered?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  instantBooking?: boolean;
+
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => ScheduleEntryDto)
