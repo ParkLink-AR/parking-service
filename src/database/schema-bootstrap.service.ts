@@ -46,6 +46,18 @@ export class SchemaBootstrapService implements OnModuleInit {
       END$$;
     `);
 
-    this.logger.log('Schema bootstrap OK (btree_gist, parking_spot_schedules constraints).');
+    await this.dataSource.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'chk_parking_spots_capacity'
+        ) THEN
+          ALTER TABLE parking_spots
+            ADD CONSTRAINT chk_parking_spots_capacity CHECK (capacity >= 1);
+        END IF;
+      END$$;
+    `);
+
+    this.logger.log('Schema bootstrap OK (btree_gist, parking_spot_schedules + parking_spots constraints).');
   }
 }

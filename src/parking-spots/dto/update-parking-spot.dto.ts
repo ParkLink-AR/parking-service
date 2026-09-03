@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsBoolean, IsLatitude, IsLongitude, IsNumber, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsInt, IsLatitude, IsLongitude, IsNumber, IsOptional, IsString, Max, Min, ValidateNested } from 'class-validator';
 import { ScheduleEntryDto } from './schedule-entry.dto';
 
 export class UpdateParkingSpotDto {
@@ -19,6 +19,15 @@ export class UpdateParkingSpotDto {
   @IsOptional()
   @IsBoolean()
   instantBooking?: boolean;
+
+  // Se puede subir o bajar sin restricción. Bajarla por debajo de las
+  // reservas activas no las cancela; sólo impide crear nuevas hasta que se
+  // libere lugar.
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(200)
+  capacity?: number;
 
   // Reemplazo completo del horario semanal (no un patch incremental por
   // día) -- ver ParkingSpotsService.replaceSchedule.

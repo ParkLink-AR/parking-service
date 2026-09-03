@@ -6,7 +6,13 @@ import { ParkingSpotSchedule } from '../parking-spots/entities/parking-spot-sche
 import { BookingClientService } from '../booking-client/booking-client.service';
 import { publishedWindowsForDay } from './published-schedule';
 import { buenosAiresMidnight, datesInRange, formatBuenosAires } from './buenos-aires-time';
-import { subtractIntervals, filterOverlapping, determineStatus, AvailabilityStatus, TimeWindow } from './interval-math';
+import {
+  subtractIntervalsWithCapacity,
+  filterOverlapping,
+  determineStatus,
+  AvailabilityStatus,
+  TimeWindow,
+} from './interval-math';
 
 const MAX_RANGE_DAYS = 14;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -50,7 +56,8 @@ export class AvailabilityService {
         const dayStart = buenosAiresMidnight(dateISO);
         const dayEnd = new Date(dayStart.getTime() + ONE_DAY_MS);
         const dayBookings = filterOverlapping(activeBookings, dayStart, dayEnd);
-        freeWindows = subtractIntervals(baseWindows, dayBookings);
+        // A spot with capacity N stays free until N bookings overlap the same instant.
+        freeWindows = subtractIntervalsWithCapacity(baseWindows, dayBookings, spot.capacity);
       }
 
       days.push({
