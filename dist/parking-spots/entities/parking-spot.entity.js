@@ -56,6 +56,30 @@ __decorate([
     __metadata("design:type", Number)
 ], ParkingSpot.prototype, "pricePerHour", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ name: 'stay_enabled', default: false }),
+    __metadata("design:type", Boolean)
+], ParkingSpot.prototype, "stayEnabled", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'price_per_day', type: 'decimal', precision: 10, scale: 2, nullable: true }),
+    __metadata("design:type", Object)
+], ParkingSpot.prototype, "pricePerDay", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'price_per_week', type: 'decimal', precision: 10, scale: 2, nullable: true }),
+    __metadata("design:type", Object)
+], ParkingSpot.prototype, "pricePerWeek", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'price_per_month', type: 'decimal', precision: 10, scale: 2, nullable: true }),
+    __metadata("design:type", Object)
+], ParkingSpot.prototype, "pricePerMonth", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'stay_available_from', type: 'date', nullable: true }),
+    __metadata("design:type", Object)
+], ParkingSpot.prototype, "stayAvailableFrom", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'max_stay_days', type: 'int', nullable: true }),
+    __metadata("design:type", Object)
+], ParkingSpot.prototype, "maxStayDays", void 0);
+__decorate([
     (0, typeorm_1.Column)({ default: false }),
     __metadata("design:type", Boolean)
 ], ParkingSpot.prototype, "covered", void 0);
@@ -63,6 +87,10 @@ __decorate([
     (0, typeorm_1.Column)({ name: 'instant_booking', default: true }),
     __metadata("design:type", Boolean)
 ], ParkingSpot.prototype, "instantBooking", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', default: 1 }),
+    __metadata("design:type", Number)
+], ParkingSpot.prototype, "capacity", void 0);
 __decorate([
     (0, typeorm_1.OneToMany)(() => parking_spot_schedule_entity_1.ParkingSpotSchedule, (schedule) => schedule.parkingSpot, { cascade: true }),
     __metadata("design:type", Array)

@@ -1,5 +1,18 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsBoolean, IsInt, IsLatitude, IsLongitude, IsNumber, IsOptional, IsString, Max, Min, ValidateNested } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsInt,
+  IsISO8601,
+  IsLatitude,
+  IsLongitude,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 import { ScheduleEntryDto } from './schedule-entry.dto';
 
 export class UpdateParkingSpotDto {
@@ -52,4 +65,39 @@ export class UpdateParkingSpotDto {
   @IsOptional()
   @IsLongitude()
   lng?: number;
+
+  // "Estadía" -- ver el comentario en ParkingSpot.stayEnabled y en
+  // CreateParkingSpotDto. A diferencia de la creación, acá cada campo es
+  // independientemente opcional (es un PATCH parcial: un dueño puede querer
+  // sólo subir pricePerMonth sin retocar el resto) -- la coherencia
+  // "si stayEnabled=true, las tarifas y maxStayDays tienen que existir" se
+  // valida en ParkingSpotsService.update() contra el estado ya mergeado,
+  // no acá contra el payload aislado.
+  @IsOptional()
+  @IsBoolean()
+  stayEnabled?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0.01)
+  pricePerDay?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0.01)
+  pricePerWeek?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0.01)
+  pricePerMonth?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  maxStayDays?: number;
+
+  @IsOptional()
+  @IsISO8601({ strict: true })
+  stayAvailableFrom?: string;
 }

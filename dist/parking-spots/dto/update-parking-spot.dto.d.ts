@@ -4,8 +4,15 @@ export declare class UpdateParkingSpotDto {
     pricePerHour?: number;
     covered?: boolean;
     instantBooking?: boolean;
+    capacity?: number;
     schedule?: ScheduleEntryDto[];
     address?: string;
     lat?: number;
     lng?: number;
+    stayEnabled?: boolean;
+    pricePerDay?: number;
+    pricePerWeek?: number;
+    pricePerMonth?: number;
+    maxStayDays?: number;
+    stayAvailableFrom?: string;
 }

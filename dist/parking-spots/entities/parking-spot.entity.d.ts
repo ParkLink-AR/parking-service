@@ -12,8 +12,15 @@ export declare class ParkingSpot {
     address: string;
     location: any;
     pricePerHour: number;
+    stayEnabled: boolean;
+    pricePerDay: number | null;
+    pricePerWeek: number | null;
+    pricePerMonth: number | null;
+    stayAvailableFrom: string | null;
+    maxStayDays: number | null;
     covered: boolean;
     instantBooking: boolean;
+    capacity: number;
     schedule: ParkingSpotSchedule[];
     photos: string[];
     rules: string[];

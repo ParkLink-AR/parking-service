@@ -9,4 +9,5 @@ export declare enum AvailabilityStatus {
 }
 export declare function filterOverlapping(intervals: TimeWindow[], from: Date, to: Date): TimeWindow[];
 export declare function subtractIntervals(baseWindows: TimeWindow[], occupiedIntervals: TimeWindow[]): TimeWindow[];
+export declare function subtractIntervalsWithCapacity(baseWindows: TimeWindow[], occupiedIntervals: TimeWindow[], capacity: number): TimeWindow[];
 export declare function determineStatus(baseIsEmpty: boolean, freeWindows: TimeWindow[]): AvailabilityStatus;

@@ -7,7 +7,14 @@ export declare class CreateParkingSpotDto {
     lng: number;
     pricePerHour: number;
     covered?: boolean;
+    capacity?: number;
     instantBooking?: boolean;
     schedule?: ScheduleEntryDto[];
     rules?: string[];
+    stayEnabled?: boolean;
+    pricePerDay?: number;
+    pricePerWeek?: number;
+    pricePerMonth?: number;
+    maxStayDays?: number;
+    stayAvailableFrom?: string;
 }

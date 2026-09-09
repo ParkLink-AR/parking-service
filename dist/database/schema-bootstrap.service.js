@@ -48,7 +48,38 @@ let SchemaBootstrapService = SchemaBootstrapService_1 = class SchemaBootstrapSer
         END IF;
       END$$;
     `);
-        this.logger.log('Schema bootstrap OK (btree_gist, parking_spot_schedules constraints).');
+        await this.dataSource.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'chk_parking_spots_capacity'
+        ) THEN
+          ALTER TABLE parking_spots
+            ADD CONSTRAINT chk_parking_spots_capacity CHECK (capacity >= 1);
+        END IF;
+      END$$;
+    `);
+        await this.dataSource.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'chk_parking_spots_stay_fields'
+        ) THEN
+          ALTER TABLE parking_spots
+            ADD CONSTRAINT chk_parking_spots_stay_fields
+            CHECK (
+              stay_enabled = false
+              OR (
+                price_per_day IS NOT NULL AND price_per_day > 0
+                AND price_per_week IS NOT NULL AND price_per_week > 0
+                AND price_per_month IS NOT NULL AND price_per_month > 0
+                AND max_stay_days IS NOT NULL AND max_stay_days >= 1
+              )
+            );
+        END IF;
+      END$$;
+    `);
+        this.logger.log('Schema bootstrap OK (btree_gist, parking_spot_schedules + parking_spots constraints).');
     }
 };
 exports.SchemaBootstrapService = SchemaBootstrapService;

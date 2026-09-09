@@ -29,6 +29,15 @@ export interface ParkingSpotResponse {
   lat: number;
   lng: number;
   pricePerHour: number;
+  // "Estadía": ver el comentario en la entidad ParkingSpot. Los precios
+  // quedan en null cuando stayEnabled es false (una cochera común no tiene
+  // por qué declararlos).
+  stayEnabled: boolean;
+  pricePerDay: number | null;
+  pricePerWeek: number | null;
+  pricePerMonth: number | null;
+  stayAvailableFrom: string | null;
+  maxStayDays: number | null;
   covered: boolean;
   instantBooking: boolean;
   // Lugares idénticos que se alquilan contra este mismo id (playa). 1 = cochera común.
@@ -57,6 +66,12 @@ const BASE_COLUMNS: Array<[string, string]> = [
   ['spot.description', 'description'],
   ['spot.address', 'address'],
   ['spot.pricePerHour', 'pricePerHour'],
+  ['spot.stayEnabled', 'stayEnabled'],
+  ['spot.pricePerDay', 'pricePerDay'],
+  ['spot.pricePerWeek', 'pricePerWeek'],
+  ['spot.pricePerMonth', 'pricePerMonth'],
+  ['spot.stayAvailableFrom', 'stayAvailableFrom'],
+  ['spot.maxStayDays', 'maxStayDays'],
   ['spot.covered', 'covered'],
   ['spot.instantBooking', 'instantBooking'],
   ['spot.capacity', 'capacity'],
@@ -74,6 +89,14 @@ function selectBaseColumns<T extends { select: Function; addSelect: Function }>(
   return qb;
 }
 
+// decimal/date columns nullable a nivel DB vuelven como null tal cual (no
+// como el string "null"), pero parseFloat(null) da NaN -- este helper evita
+// mandarle NaN al mobile cuando stayEnabled es false y las tarifas de
+// estadía nunca se completaron.
+function parseNullableFloat(value: unknown): number | null {
+  return value === null || value === undefined ? null : parseFloat(value as string);
+}
+
 function toResponse(
   raw: Record<string, any>,
   schedule: ScheduleEntryResponse[],
@@ -88,6 +111,12 @@ function toResponse(
     lat: parseFloat(raw.lat),
     lng: parseFloat(raw.lng),
     pricePerHour: parseFloat(raw.pricePerHour),
+    stayEnabled: raw.stayEnabled,
+    pricePerDay: parseNullableFloat(raw.pricePerDay),
+    pricePerWeek: parseNullableFloat(raw.pricePerWeek),
+    pricePerMonth: parseNullableFloat(raw.pricePerMonth),
+    stayAvailableFrom: raw.stayAvailableFrom ?? null,
+    maxStayDays: raw.maxStayDays === null || raw.maxStayDays === undefined ? null : Number(raw.maxStayDays),
     covered: raw.covered,
     instantBooking: raw.instantBooking,
     capacity: Number(raw.capacity ?? 1),
@@ -230,6 +259,10 @@ export class ParkingSpotsService {
       query.andWhere('spot.covered = :covered', { covered: filters.covered });
     }
 
+    if (filters.stayOnly) {
+      query.andWhere('spot.stayEnabled = true');
+    }
+
     const raw = await query.getRawMany();
     const schedules = await this.scheduleForMany(raw.map((row) => row.id));
     const spots = raw.map((row) => toResponse(row, schedules.get(row.id) ?? [], parseFloat(row.distanceM)));
@@ -292,6 +325,12 @@ export class ParkingSpotsService {
       description: dto.description,
       address: dto.address,
       pricePerHour: dto.pricePerHour,
+      stayEnabled: dto.stayEnabled ?? false,
+      pricePerDay: dto.stayEnabled ? dto.pricePerDay! : null,
+      pricePerWeek: dto.stayEnabled ? dto.pricePerWeek! : null,
+      pricePerMonth: dto.stayEnabled ? dto.pricePerMonth! : null,
+      maxStayDays: dto.stayEnabled ? dto.maxStayDays! : null,
+      stayAvailableFrom: dto.stayEnabled ? (dto.stayAvailableFrom ?? null) : null,
       covered: dto.covered ?? false,
       instantBooking: dto.instantBooking ?? true,
       capacity: dto.capacity ?? 1,
@@ -318,6 +357,19 @@ export class ParkingSpotsService {
     if (dto.covered !== undefined) spot.covered = dto.covered;
     if (dto.instantBooking !== undefined) spot.instantBooking = dto.instantBooking;
     if (dto.capacity !== undefined) spot.capacity = dto.capacity;
+
+    if (dto.stayEnabled !== undefined) spot.stayEnabled = dto.stayEnabled;
+    if (dto.pricePerDay !== undefined) spot.pricePerDay = dto.pricePerDay;
+    if (dto.pricePerWeek !== undefined) spot.pricePerWeek = dto.pricePerWeek;
+    if (dto.pricePerMonth !== undefined) spot.pricePerMonth = dto.pricePerMonth;
+    if (dto.maxStayDays !== undefined) spot.maxStayDays = dto.maxStayDays;
+    if (dto.stayAvailableFrom !== undefined) spot.stayAvailableFrom = dto.stayAvailableFrom;
+    // A diferencia de create() (donde el DTO ya exige las 4 juntas vía
+    // @ValidateIf), acá cada campo llega independiente en un PATCH parcial --
+    // se valida contra el estado final ya mergeado, no contra lo que vino en
+    // este request puntual, porque "habilitar" y "cargar las tarifas" pueden
+    // ser dos requests distintos.
+    if (spot.stayEnabled) this.validateStayCoherence(spot);
 
     const changingLocation = dto.address !== undefined || dto.lat !== undefined || dto.lng !== undefined;
     if (changingLocation) {
@@ -358,6 +410,24 @@ export class ParkingSpotsService {
         await manager.save(rows);
       }
     });
+  }
+
+  // Sólo se llama cuando stayEnabled termina en true (create() ya lo exige
+  // vía DTO; update() lo re-chequea acá porque un PATCH parcial puede activar
+  // el toggle sin traer las tarifas en el mismo request). Backstop en código
+  // de la misma regla que el CHECK chk_parking_spots_stay_fields agrega en
+  // la DB -- ver SchemaBootstrapService.
+  private validateStayCoherence(spot: ParkingSpot): void {
+    if (
+      spot.pricePerDay === null ||
+      spot.pricePerWeek === null ||
+      spot.pricePerMonth === null ||
+      spot.maxStayDays === null
+    ) {
+      throw new BadRequestException(
+        'Para habilitar la estadía hay que cargar pricePerDay, pricePerWeek, pricePerMonth y maxStayDays.',
+      );
+    }
   }
 
   private async getOwnedSpot(id: string, ownerId: string): Promise<ParkingSpot> {

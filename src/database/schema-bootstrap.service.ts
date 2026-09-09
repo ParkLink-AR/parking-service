@@ -58,6 +58,32 @@ export class SchemaBootstrapService implements OnModuleInit {
       END$$;
     `);
 
+    // Backstop de ParkingSpotsService.validateStayCoherence: si stay_enabled
+    // es true, las tres tarifas y la duración máxima tienen que estar
+    // completas -- sin esto, un UPDATE que se salte la capa de servicio
+    // (o un bug futuro en ella) podría dejar una cochera "con estadía
+    // habilitada" pero sin precio, y StaysService no tendría de dónde cobrar.
+    await this.dataSource.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'chk_parking_spots_stay_fields'
+        ) THEN
+          ALTER TABLE parking_spots
+            ADD CONSTRAINT chk_parking_spots_stay_fields
+            CHECK (
+              stay_enabled = false
+              OR (
+                price_per_day IS NOT NULL AND price_per_day > 0
+                AND price_per_week IS NOT NULL AND price_per_week > 0
+                AND price_per_month IS NOT NULL AND price_per_month > 0
+                AND max_stay_days IS NOT NULL AND max_stay_days >= 1
+              )
+            );
+        END IF;
+      END$$;
+    `);
+
     this.logger.log('Schema bootstrap OK (btree_gist, parking_spot_schedules + parking_spots constraints).');
   }
 }

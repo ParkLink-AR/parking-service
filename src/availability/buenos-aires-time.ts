@@ -18,8 +18,14 @@ export function formatBuenosAires(date: Date): string {
 
 /** Advances a YYYY-MM-DD calendar date by one day. */
 export function addOneDay(dateISO: string): string {
+  return addDays(dateISO, 1);
+}
+
+/** Advances a YYYY-MM-DD calendar date by `days` days (used by StaysService to turn a
+ * stay's start date + duration into its end date). */
+export function addDays(dateISO: string, days: number): string {
   const [year, month, day] = dateISO.split('-').map(Number);
-  return new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10);
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
 }
 
 /** Yields each calendar date (YYYY-MM-DD) in the half-open range [from, to). */

@@ -15,6 +15,7 @@ const parking_spots_module_1 = require("./parking-spots/parking-spots.module");
 const geocoding_module_1 = require("./geocoding/geocoding.module");
 const favorites_module_1 = require("./favorites/favorites.module");
 const database_module_1 = require("./database/database.module");
+const stays_module_1 = require("./stays/stays.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -29,6 +30,7 @@ exports.AppModule = AppModule = __decorate([
             parking_spots_module_1.ParkingSpotsModule,
             geocoding_module_1.GeocodingModule,
             favorites_module_1.FavoritesModule,
+            stays_module_1.StaysModule,
         ],
     })
 ], AppModule);

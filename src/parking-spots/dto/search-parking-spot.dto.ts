@@ -34,6 +34,15 @@ export class SearchParkingSpotDto {
   @IsBoolean()
   covered?: boolean;
 
+  // Sólo cocheras con la opción de estadía habilitada (ver
+  // ParkingSpot.stayEnabled) -- lo usa el buscador cuando el conductor busca
+  // específicamente un lugar para dejar el auto varios días/semanas/meses,
+  // no una franja horaria.
+  @IsOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
+  stayOnly?: boolean;
+
   // Ventana horaria deseada (ISO 8601 con offset, ej. "2026-08-24T08:00:00-03:00").
   // Van juntos: si viene uno tiene que venir el otro (mismo criterio que
   // address/lat/lng en UpdateParkingSpotDto). Por ahora ParkingSpotsService.search()

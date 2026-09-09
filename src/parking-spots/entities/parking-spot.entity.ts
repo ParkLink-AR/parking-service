@@ -48,6 +48,37 @@ export class ParkingSpot {
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   pricePerHour!: number;
 
+  // "Estadía": alquiler de la cochera por día/semana/mes en vez de por hora
+  // (p.ej. quien viaja y necesita dejar el auto varios días). Deliberadamente
+  // separado de pricePerHour -- multiplicar la tarifa horaria por 24/168/720
+  // le daría al dueño un precio que no eligió. stayEnabled es el toggle que
+  // pide el dueño; los tres precios, stayAvailableFrom y maxStayDays sólo se
+  // exigen completos cuando está en true (ver CreateParkingSpotDto /
+  // UpdateParkingSpotDto y el CHECK que agrega SchemaBootstrapService).
+  @Column({ name: 'stay_enabled', default: false })
+  stayEnabled!: boolean;
+
+  @Column({ name: 'price_per_day', type: 'decimal', precision: 10, scale: 2, nullable: true })
+  pricePerDay!: number | null;
+
+  @Column({ name: 'price_per_week', type: 'decimal', precision: 10, scale: 2, nullable: true })
+  pricePerWeek!: number | null;
+
+  @Column({ name: 'price_per_month', type: 'decimal', precision: 10, scale: 2, nullable: true })
+  pricePerMonth!: number | null;
+
+  // Fecha (YYYY-MM-DD) a partir de la cual el dueño acepta el check-in de una
+  // estadía -- no tiene por qué ser hoy (p.ej. "recién puedo alquilarla desde
+  // que me mude"). El conductor puede elegir cualquier fecha de inicio >= esta.
+  @Column({ name: 'stay_available_from', type: 'date', nullable: true })
+  stayAvailableFrom!: string | null;
+
+  // Duración máxima de una estadía, en días (una semana = 7, un mes = 30 --
+  // ver StaysService.UNIT_DAYS). Sin esto un conductor podría pedir una
+  // "estadía" de dos años.
+  @Column({ name: 'max_stay_days', type: 'int', nullable: true })
+  maxStayDays!: number | null;
+
   @Column({ default: false })
   covered!: boolean;
 

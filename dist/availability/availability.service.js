@@ -49,7 +49,7 @@ let AvailabilityService = class AvailabilityService {
                 const dayStart = (0, buenos_aires_time_1.buenosAiresMidnight)(dateISO);
                 const dayEnd = new Date(dayStart.getTime() + ONE_DAY_MS);
                 const dayBookings = (0, interval_math_1.filterOverlapping)(activeBookings, dayStart, dayEnd);
-                freeWindows = (0, interval_math_1.subtractIntervals)(baseWindows, dayBookings);
+                freeWindows = (0, interval_math_1.subtractIntervalsWithCapacity)(baseWindows, dayBookings, spot.capacity);
             }
             days.push({
                 date: dateISO,

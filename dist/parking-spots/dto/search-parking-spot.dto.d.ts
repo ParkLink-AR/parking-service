@@ -4,6 +4,7 @@ export declare class SearchParkingSpotDto {
     radius?: number;
     maxPrice?: number;
     covered?: boolean;
+    stayOnly?: boolean;
     from?: string;
     to?: string;
 }

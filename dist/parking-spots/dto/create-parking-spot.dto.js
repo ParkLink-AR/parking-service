@@ -49,6 +49,13 @@ __decorate([
 ], CreateParkingSpotDto.prototype, "covered", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.Min)(1),
+    (0, class_validator_1.Max)(200),
+    __metadata("design:type", Number)
+], CreateParkingSpotDto.prototype, "capacity", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsBoolean)(),
     __metadata("design:type", Boolean)
 ], CreateParkingSpotDto.prototype, "instantBooking", void 0);
@@ -64,4 +71,38 @@ __decorate([
     (0, class_validator_1.IsArray)(),
     __metadata("design:type", Array)
 ], CreateParkingSpotDto.prototype, "rules", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], CreateParkingSpotDto.prototype, "stayEnabled", void 0);
+__decorate([
+    (0, class_validator_1.ValidateIf)((dto) => dto.stayEnabled === true),
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(0.01),
+    __metadata("design:type", Number)
+], CreateParkingSpotDto.prototype, "pricePerDay", void 0);
+__decorate([
+    (0, class_validator_1.ValidateIf)((dto) => dto.stayEnabled === true),
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(0.01),
+    __metadata("design:type", Number)
+], CreateParkingSpotDto.prototype, "pricePerWeek", void 0);
+__decorate([
+    (0, class_validator_1.ValidateIf)((dto) => dto.stayEnabled === true),
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(0.01),
+    __metadata("design:type", Number)
+], CreateParkingSpotDto.prototype, "pricePerMonth", void 0);
+__decorate([
+    (0, class_validator_1.ValidateIf)((dto) => dto.stayEnabled === true),
+    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.Min)(1),
+    __metadata("design:type", Number)
+], CreateParkingSpotDto.prototype, "maxStayDays", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsISO8601)({ strict: true }),
+    __metadata("design:type", String)
+], CreateParkingSpotDto.prototype, "stayAvailableFrom", void 0);
 //# sourceMappingURL=create-parking-spot.dto.js.map

@@ -39,6 +39,13 @@ __decorate([
 ], UpdateParkingSpotDto.prototype, "instantBooking", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.Min)(1),
+    (0, class_validator_1.Max)(200),
+    __metadata("design:type", Number)
+], UpdateParkingSpotDto.prototype, "capacity", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsArray)(),
     (0, class_validator_1.ValidateNested)({ each: true }),
     (0, class_transformer_1.Type)(() => schedule_entry_dto_1.ScheduleEntryDto),
@@ -59,4 +66,38 @@ __decorate([
     (0, class_validator_1.IsLongitude)(),
     __metadata("design:type", Number)
 ], UpdateParkingSpotDto.prototype, "lng", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], UpdateParkingSpotDto.prototype, "stayEnabled", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(0.01),
+    __metadata("design:type", Number)
+], UpdateParkingSpotDto.prototype, "pricePerDay", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(0.01),
+    __metadata("design:type", Number)
+], UpdateParkingSpotDto.prototype, "pricePerWeek", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(0.01),
+    __metadata("design:type", Number)
+], UpdateParkingSpotDto.prototype, "pricePerMonth", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.Min)(1),
+    __metadata("design:type", Number)
+], UpdateParkingSpotDto.prototype, "maxStayDays", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsISO8601)({ strict: true }),
+    __metadata("design:type", String)
+], UpdateParkingSpotDto.prototype, "stayAvailableFrom", void 0);
 //# sourceMappingURL=update-parking-spot.dto.js.map

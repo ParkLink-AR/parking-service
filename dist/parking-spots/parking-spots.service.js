@@ -28,8 +28,15 @@ const BASE_COLUMNS = [
     ['spot.description', 'description'],
     ['spot.address', 'address'],
     ['spot.pricePerHour', 'pricePerHour'],
+    ['spot.stayEnabled', 'stayEnabled'],
+    ['spot.pricePerDay', 'pricePerDay'],
+    ['spot.pricePerWeek', 'pricePerWeek'],
+    ['spot.pricePerMonth', 'pricePerMonth'],
+    ['spot.stayAvailableFrom', 'stayAvailableFrom'],
+    ['spot.maxStayDays', 'maxStayDays'],
     ['spot.covered', 'covered'],
     ['spot.instantBooking', 'instantBooking'],
+    ['spot.capacity', 'capacity'],
     ['spot.photos', 'photos'],
     ['spot.rules', 'rules'],
     ['spot.status', 'status'],
@@ -43,6 +50,9 @@ function selectBaseColumns(qb) {
         qb.addSelect(column, alias);
     return qb;
 }
+function parseNullableFloat(value) {
+    return value === null || value === undefined ? null : parseFloat(value);
+}
 function toResponse(raw, schedule, distanceMeters) {
     return {
         id: raw.id,
@@ -53,8 +63,15 @@ function toResponse(raw, schedule, distanceMeters) {
         lat: parseFloat(raw.lat),
         lng: parseFloat(raw.lng),
         pricePerHour: parseFloat(raw.pricePerHour),
+        stayEnabled: raw.stayEnabled,
+        pricePerDay: parseNullableFloat(raw.pricePerDay),
+        pricePerWeek: parseNullableFloat(raw.pricePerWeek),
+        pricePerMonth: parseNullableFloat(raw.pricePerMonth),
+        stayAvailableFrom: raw.stayAvailableFrom ?? null,
+        maxStayDays: raw.maxStayDays === null || raw.maxStayDays === undefined ? null : Number(raw.maxStayDays),
         covered: raw.covered,
         instantBooking: raw.instantBooking,
+        capacity: Number(raw.capacity ?? 1),
         schedule,
         photos: raw.photos ?? [],
         rules: raw.rules ?? [],
@@ -159,6 +176,9 @@ let ParkingSpotsService = ParkingSpotsService_1 = class ParkingSpotsService {
         if (filters.covered !== undefined) {
             query.andWhere('spot.covered = :covered', { covered: filters.covered });
         }
+        if (filters.stayOnly) {
+            query.andWhere('spot.stayEnabled = true');
+        }
         const raw = await query.getRawMany();
         const schedules = await this.scheduleForMany(raw.map((row) => row.id));
         const spots = raw.map((row) => toResponse(row, schedules.get(row.id) ?? [], parseFloat(row.distanceM)));
@@ -167,7 +187,7 @@ let ParkingSpotsService = ParkingSpotsService_1 = class ParkingSpotsService {
             return spots;
         }
         try {
-            const bookableIDs = new Set(await this.bookingClient.getBookableSpotIds(spots.map((spot) => spot.id), filters.from, filters.to));
+            const bookableIDs = new Set(await this.bookingClient.getBookableSpotIds(spots.map((spot) => ({ id: spot.id, capacity: spot.capacity })), filters.from, filters.to));
             return spots.filter((spot) => bookableIDs.has(spot.id));
         }
         catch (error) {
@@ -197,8 +217,15 @@ let ParkingSpotsService = ParkingSpotsService_1 = class ParkingSpotsService {
             description: dto.description,
             address: dto.address,
             pricePerHour: dto.pricePerHour,
+            stayEnabled: dto.stayEnabled ?? false,
+            pricePerDay: dto.stayEnabled ? dto.pricePerDay : null,
+            pricePerWeek: dto.stayEnabled ? dto.pricePerWeek : null,
+            pricePerMonth: dto.stayEnabled ? dto.pricePerMonth : null,
+            maxStayDays: dto.stayEnabled ? dto.maxStayDays : null,
+            stayAvailableFrom: dto.stayEnabled ? (dto.stayAvailableFrom ?? null) : null,
             covered: dto.covered ?? false,
             instantBooking: dto.instantBooking ?? true,
+            capacity: dto.capacity ?? 1,
             rules: dto.rules ?? [],
             ownerId,
             location: {
@@ -222,6 +249,22 @@ let ParkingSpotsService = ParkingSpotsService_1 = class ParkingSpotsService {
             spot.covered = dto.covered;
         if (dto.instantBooking !== undefined)
             spot.instantBooking = dto.instantBooking;
+        if (dto.capacity !== undefined)
+            spot.capacity = dto.capacity;
+        if (dto.stayEnabled !== undefined)
+            spot.stayEnabled = dto.stayEnabled;
+        if (dto.pricePerDay !== undefined)
+            spot.pricePerDay = dto.pricePerDay;
+        if (dto.pricePerWeek !== undefined)
+            spot.pricePerWeek = dto.pricePerWeek;
+        if (dto.pricePerMonth !== undefined)
+            spot.pricePerMonth = dto.pricePerMonth;
+        if (dto.maxStayDays !== undefined)
+            spot.maxStayDays = dto.maxStayDays;
+        if (dto.stayAvailableFrom !== undefined)
+            spot.stayAvailableFrom = dto.stayAvailableFrom;
+        if (spot.stayEnabled)
+            this.validateStayCoherence(spot);
         const changingLocation = dto.address !== undefined || dto.lat !== undefined || dto.lng !== undefined;
         if (changingLocation) {
             if (dto.address === undefined || dto.lat === undefined || dto.lng === undefined) {
@@ -246,6 +289,14 @@ let ParkingSpotsService = ParkingSpotsService_1 = class ParkingSpotsService {
                 await manager.save(rows);
             }
         });
+    }
+    validateStayCoherence(spot) {
+        if (spot.pricePerDay === null ||
+            spot.pricePerWeek === null ||
+            spot.pricePerMonth === null ||
+            spot.maxStayDays === null) {
+            throw new common_1.BadRequestException('Para habilitar la estadía hay que cargar pricePerDay, pricePerWeek, pricePerMonth y maxStayDays.');
+        }
     }
     async getOwnedSpot(id, ownerId) {
         const spot = await this.parkingSpotRepo.findOne({ where: { id } });

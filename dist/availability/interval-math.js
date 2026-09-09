@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AvailabilityStatus = void 0;
 exports.filterOverlapping = filterOverlapping;
 exports.subtractIntervals = subtractIntervals;
+exports.subtractIntervalsWithCapacity = subtractIntervalsWithCapacity;
 exports.determineStatus = determineStatus;
 var AvailabilityStatus;
 (function (AvailabilityStatus) {
@@ -33,6 +34,32 @@ function subtractIntervals(baseWindows, occupiedIntervals) {
     }
     free.sort((a, b) => a.start.getTime() - b.start.getTime());
     return free;
+}
+function subtractIntervalsWithCapacity(baseWindows, occupiedIntervals, capacity) {
+    if (capacity <= 1)
+        return subtractIntervals(baseWindows, occupiedIntervals);
+    const free = [];
+    for (const base of baseWindows) {
+        const baseStart = base.start.getTime();
+        const baseEnd = base.end.getTime();
+        const clipped = occupiedIntervals
+            .map((o) => ({ start: Math.max(o.start.getTime(), baseStart), end: Math.min(o.end.getTime(), baseEnd) }))
+            .filter((o) => o.start < o.end);
+        const points = Array.from(new Set([baseStart, baseEnd, ...clipped.flatMap((o) => [o.start, o.end])])).sort((a, b) => a - b);
+        for (let i = 0; i < points.length - 1; i++) {
+            const sliceStart = points[i];
+            const sliceEnd = points[i + 1];
+            if (sliceStart >= sliceEnd)
+                continue;
+            const mid = (sliceStart + sliceEnd) / 2;
+            const concurrent = clipped.filter((o) => o.start <= mid && mid < o.end).length;
+            if (concurrent < capacity) {
+                free.push({ start: new Date(sliceStart), end: new Date(sliceEnd) });
+            }
+        }
+    }
+    free.sort((a, b) => a.start.getTime() - b.start.getTime());
+    return mergeIntervals(free);
 }
 function determineStatus(baseIsEmpty, freeWindows) {
     if (baseIsEmpty)

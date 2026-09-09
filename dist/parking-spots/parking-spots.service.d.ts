@@ -20,8 +20,15 @@ export interface ParkingSpotResponse {
     lat: number;
     lng: number;
     pricePerHour: number;
+    stayEnabled: boolean;
+    pricePerDay: number | null;
+    pricePerWeek: number | null;
+    pricePerMonth: number | null;
+    stayAvailableFrom: string | null;
+    maxStayDays: number | null;
     covered: boolean;
     instantBooking: boolean;
+    capacity: number;
     schedule: ScheduleEntryResponse[];
     photos: string[];
     rules: string[];
@@ -46,6 +53,7 @@ export declare class ParkingSpotsService {
     create(dto: CreateParkingSpotDto, ownerId: string): Promise<ParkingSpotResponse>;
     update(id: string, dto: UpdateParkingSpotDto): Promise<ParkingSpotResponse>;
     private replaceSchedule;
+    private validateStayCoherence;
     private getOwnedSpot;
     addPhotos(id: string, ownerId: string, urls: string[]): Promise<ParkingSpotResponse>;
     removePhoto(id: string, ownerId: string, url: string): Promise<ParkingSpotResponse>;

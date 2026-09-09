@@ -33,13 +33,13 @@ let BookingClientService = class BookingClientService {
         }
         return data.bookings.flatMap((day) => day.bookings.map((booking) => ({ start: new Date(booking.start), end: new Date(booking.end) })));
     }
-    async getBookableSpotIds(parkingSpotIds, start, end) {
-        if (parkingSpotIds.length === 0)
+    async getBookableSpotIds(spots, start, end) {
+        if (spots.length === 0)
             return [];
         const baseUrl = this.configService.get('BOOKING_SERVICE_URL');
         try {
             const response = await (0, rxjs_1.firstValueFrom)(this.httpService.post(`${baseUrl}/parking-spots/bookable`, {
-                parking_spot_ids: parkingSpotIds,
+                spots,
                 start,
                 end,
             }));
