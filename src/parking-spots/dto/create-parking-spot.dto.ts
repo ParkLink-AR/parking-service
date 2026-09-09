@@ -9,6 +9,7 @@ import {
   IsLatitude,
   IsLongitude,
   IsNumber,
+  IsObject,
   IsOptional,
   Max,
   Min,
@@ -47,10 +48,25 @@ export class CreateParkingSpotDto {
   @IsBoolean()
   hourlyEnabled?: boolean;
 
-  @ValidateIf((dto: CreateParkingSpotDto) => dto.hourlyEnabled !== false)
+  // Opcional apenas se manda pricePerHourByVehicleType -- ahí el precio
+  // depende de qué tipo de vehículo elija el conductor y este campo queda
+  // sin usar (ver ParkingSpotsService.validateHourlyCoherence, que exige uno
+  // de los dos, no los dos a la vez).
+  @ValidateIf((dto: CreateParkingSpotDto) => dto.hourlyEnabled !== false && !dto.pricePerHourByVehicleType)
   @IsNumber()
   @Min(0.01)
   pricePerHour?: number;
+
+  // Precio por hora distinto según el tipo de vehículo (auto/pickup/moto/
+  // bici) -- alternativa a pricePerHour para cocheras donde no todos pagan
+  // lo mismo (p.ej. una moto más barata que una camioneta). La forma exacta
+  // (una entrada por cada tipo en vehicleTypes, valores positivos) se
+  // valida en el service, no acá, porque depende de vehicleTypes -- otro
+  // campo del mismo DTO -- y class-validator no cruza campos limpio para
+  // un objeto de forma dinámica.
+  @IsOptional()
+  @IsObject()
+  pricePerHourByVehicleType?: Partial<Record<VehicleType, number>>;
 
   @IsOptional()
   @IsBoolean()

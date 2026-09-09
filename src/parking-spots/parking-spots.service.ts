@@ -8,7 +8,7 @@ import { CreateParkingSpotDto } from './dto/create-parking-spot.dto';
 import { UpdateParkingSpotDto } from './dto/update-parking-spot.dto';
 import { ScheduleEntryDto } from './dto/schedule-entry.dto';
 import { BookingClientService } from '../booking-client/booking-client.service';
-import { VehicleType } from './vehicle-type';
+import { VehicleType, VEHICLE_TYPES } from './vehicle-type';
 
 export interface ScheduleEntryResponse {
   dayOfWeek: number;
@@ -33,6 +33,10 @@ export interface ParkingSpotResponse {
   // publica precio ni horario por hora).
   hourlyEnabled: boolean;
   pricePerHour: number | null;
+  // Ver el comentario en la entidad -- no-null implica que pricePerHour de
+  // arriba no aplica, el precio real sale de acá según qué vehículo elija
+  // el conductor.
+  pricePerHourByVehicleType: Partial<Record<VehicleType, number>> | null;
   // "Estadía": ver el comentario en la entidad ParkingSpot. Los precios
   // quedan en null cuando stayEnabled es false (una cochera común no tiene
   // por qué declararlos).
@@ -73,6 +77,7 @@ const BASE_COLUMNS: Array<[string, string]> = [
   ['spot.address', 'address'],
   ['spot.hourlyEnabled', 'hourlyEnabled'],
   ['spot.pricePerHour', 'pricePerHour'],
+  ['spot.pricePerHourByVehicleType', 'pricePerHourByVehicleType'],
   ['spot.stayEnabled', 'stayEnabled'],
   ['spot.pricePerDay', 'pricePerDay'],
   ['spot.pricePerWeek', 'pricePerWeek'],
@@ -121,6 +126,7 @@ function toResponse(
     lng: parseFloat(raw.lng),
     hourlyEnabled: raw.hourlyEnabled,
     pricePerHour: parseNullableFloat(raw.pricePerHour),
+    pricePerHourByVehicleType: raw.pricePerHourByVehicleType ?? null,
     stayEnabled: raw.stayEnabled,
     pricePerDay: parseNullableFloat(raw.pricePerDay),
     pricePerWeek: parseNullableFloat(raw.pricePerWeek),
@@ -264,9 +270,19 @@ export class ParkingSpotsService {
     }
 
     if (filters.maxPrice !== undefined) {
-      query.andWhere('spot.pricePerHour <= :maxPrice', {
-        maxPrice: filters.maxPrice,
-      });
+      // Cuando el precio varía por tipo de vehículo, spot.pricePerHour es
+      // null (ver el comentario en la entidad) -- alcanza con que alguna
+      // tarifa del mapa esté dentro del máximo para no descartar la cochera.
+      query.andWhere(
+        `(
+          spot.pricePerHour <= :maxPrice
+          OR EXISTS (
+            SELECT 1 FROM jsonb_each_text(spot.pricePerHourByVehicleType) AS v(vehicle_type, price)
+            WHERE price::numeric <= :maxPrice
+          )
+        )`,
+        { maxPrice: filters.maxPrice },
+      );
     }
 
     if (filters.covered !== undefined) {
@@ -345,7 +361,8 @@ export class ParkingSpotsService {
       description: dto.description,
       address: dto.address,
       hourlyEnabled: dto.hourlyEnabled ?? true,
-      pricePerHour: dto.hourlyEnabled === false ? null : dto.pricePerHour!,
+      pricePerHour: dto.hourlyEnabled === false || dto.pricePerHourByVehicleType ? null : dto.pricePerHour!,
+      pricePerHourByVehicleType: dto.hourlyEnabled === false ? null : (dto.pricePerHourByVehicleType ?? null),
       stayEnabled: dto.stayEnabled ?? false,
       pricePerDay: dto.stayEnabled ? dto.pricePerDay! : null,
       pricePerWeek: dto.stayEnabled ? dto.pricePerWeek! : null,
@@ -388,6 +405,15 @@ export class ParkingSpotsService {
 
     if (dto.hourlyEnabled !== undefined) spot.hourlyEnabled = dto.hourlyEnabled;
     if (dto.pricePerHour !== undefined) spot.pricePerHour = dto.pricePerHour;
+    if (dto.pricePerHourByVehicleType !== undefined) {
+      spot.pricePerHourByVehicleType = dto.pricePerHourByVehicleType;
+      // Sólo uno de los dos manda a la vez -- pasar a precio por vehículo
+      // deja el precio único obsoleto, igual que create() lo hace desde el
+      // arranque. Volver a un único precio (mandando `null` acá) no lo
+      // reactiva solo: el dueño tiene que volver a cargar pricePerHour en
+      // el mismo o en otro request, si no validateHourlyCoherence lo pide.
+      if (dto.pricePerHourByVehicleType) spot.pricePerHour = null;
+    }
     if (dto.description !== undefined) spot.description = dto.description;
     if (dto.covered !== undefined) spot.covered = dto.covered;
     if (dto.vehicleTypes !== undefined) spot.vehicleTypes = dto.vehicleTypes;
@@ -479,10 +505,31 @@ export class ParkingSpotsService {
   }
 
   // Misma idea que validateStayCoherence, reforzada por el CHECK
-  // chk_parking_spots_hourly_fields que agrega SchemaBootstrapService.
+  // chk_parking_spots_hourly_fields que agrega SchemaBootstrapService (que
+  // sólo puede validar pricePerHour -- lo de pricePerHourByVehicleType, al
+  // ser JSONB de forma libre, se queda enteramente acá).
   private validateHourlyCoherence(spot: ParkingSpot): void {
+    if (spot.pricePerHourByVehicleType) {
+      const byVehicle = spot.pricePerHourByVehicleType;
+      for (const key of Object.keys(byVehicle)) {
+        if (!VEHICLE_TYPES.includes(key as VehicleType)) {
+          throw new BadRequestException(`Tipo de vehículo inválido en pricePerHourByVehicleType: ${key}`);
+        }
+      }
+      for (const vehicleType of spot.vehicleTypes ?? []) {
+        const price = byVehicle[vehicleType];
+        if (typeof price !== 'number' || !(price > 0)) {
+          throw new BadRequestException(
+            `Falta cargar pricePerHourByVehicleType.${vehicleType} (o no es un número positivo).`,
+          );
+        }
+      }
+      return;
+    }
     if (spot.pricePerHour === null) {
-      throw new BadRequestException('Para habilitar el alquiler por hora hay que cargar pricePerHour.');
+      throw new BadRequestException(
+        'Para habilitar el alquiler por hora hay que cargar pricePerHour, o un precio por tipo de vehículo.',
+      );
     }
   }
 

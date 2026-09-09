@@ -9,6 +9,7 @@ import {
   IsLatitude,
   IsLongitude,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   Max,
@@ -35,6 +36,13 @@ export class UpdateParkingSpotDto {
   @IsNumber()
   @Min(0.01)
   pricePerHour?: number;
+
+  // Precio por hora distinto según tipo de vehículo -- ver el comentario en
+  // CreateParkingSpotDto. Mandar `null` explícito borra el mapa (vuelve a
+  // usar pricePerHour para todos); omitir el campo deja lo que ya había.
+  @IsOptional()
+  @IsObject()
+  pricePerHourByVehicleType?: Partial<Record<VehicleType, number>> | null;
 
   @IsOptional()
   @IsBoolean()

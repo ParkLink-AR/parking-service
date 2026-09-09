@@ -105,22 +105,24 @@ export class SchemaBootstrapService implements OnModuleInit {
     `);
 
     // Backstop de ParkingSpotsService.validateHourlyCoherence: si
-    // hourly_enabled es true, price_per_hour tiene que estar cargado --
-    // misma idea que chk_parking_spots_stay_fields arriba.
+    // hourly_enabled es true, tiene que haber precio de una de las dos
+    // formas -- único (price_per_hour) o por tipo de vehículo
+    // (price_per_hour_by_vehicle_type, cuya forma exacta -- una entrada por
+    // cada tipo en vehicle_types -- sólo se puede validar en el service, no
+    // acá). Se recrea sin el guard IF NOT EXISTS habitual: a diferencia de
+    // los demás CHECK de este archivo, este reemplaza una versión anterior
+    // (sólo contemplaba price_per_hour) que ya puede existir en la DB.
     await this.dataSource.query(`
-      DO $$
-      BEGIN
-        IF NOT EXISTS (
-          SELECT 1 FROM pg_constraint WHERE conname = 'chk_parking_spots_hourly_fields'
-        ) THEN
-          ALTER TABLE parking_spots
-            ADD CONSTRAINT chk_parking_spots_hourly_fields
-            CHECK (
-              hourly_enabled = false
-              OR (price_per_hour IS NOT NULL AND price_per_hour > 0)
-            );
-        END IF;
-      END$$;
+      ALTER TABLE parking_spots DROP CONSTRAINT IF EXISTS chk_parking_spots_hourly_fields;
+    `);
+    await this.dataSource.query(`
+      ALTER TABLE parking_spots
+        ADD CONSTRAINT chk_parking_spots_hourly_fields
+        CHECK (
+          hourly_enabled = false
+          OR (price_per_hour IS NOT NULL AND price_per_hour > 0)
+          OR price_per_hour_by_vehicle_type IS NOT NULL
+        );
     `);
 
     // Una cochera tiene que ofrecer alquiler por hora, por estadía, o ambos

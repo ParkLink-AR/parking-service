@@ -62,6 +62,16 @@ export class ParkingSpot {
   @Column({ name: 'price_per_hour', type: 'decimal', precision: 10, scale: 2, nullable: true })
   pricePerHour!: number | null;
 
+  // Alternativa a pricePerHour para cocheras donde el precio depende del
+  // tipo de vehículo (p.ej. auto y camioneta pagan distinto) -- null
+  // significa "un solo precio para todos" (pricePerHour de arriba se usa
+  // igual que siempre). Si está seteado, tiene una entrada para cada tipo
+  // en vehicleTypes y pricePerHour deja de exigirse/usarse (ver
+  // ParkingSpotsService.validateHourlyCoherence): el conductor elige su
+  // vehículo antes de ver un precio real.
+  @Column({ name: 'price_per_hour_by_vehicle_type', type: 'jsonb', nullable: true })
+  pricePerHourByVehicleType!: Partial<Record<VehicleType, number>> | null;
+
   // "Estadía": alquiler de la cochera por día/semana/mes en vez de por hora
   // (p.ej. quien viaja y necesita dejar el auto varios días). Deliberadamente
   // separado de pricePerHour -- multiplicar la tarifa horaria por 24/168/720
