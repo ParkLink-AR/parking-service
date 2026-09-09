@@ -1,6 +1,7 @@
 import { ScheduleEntryDto } from './schedule-entry.dto';
 export declare class UpdateParkingSpotDto {
     description?: string;
+    hourlyEnabled?: boolean;
     pricePerHour?: number;
     covered?: boolean;
     instantBooking?: boolean;

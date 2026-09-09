@@ -1,7 +1,9 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayNotEmpty,
   IsArray,
   IsBoolean,
+  IsIn,
   IsInt,
   IsISO8601,
   IsLatitude,
@@ -15,6 +17,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { ScheduleEntryDto } from './schedule-entry.dto';
+import { VehicleType, VEHICLE_TYPES } from '../vehicle-type';
 
 export class CreateParkingSpotDto {
   @IsString()
@@ -37,13 +40,30 @@ export class CreateParkingSpotDto {
   @IsLongitude()
   lng!: number;
 
+  // Alquiler por hora -- ver el comentario en ParkingSpot.hourlyEnabled.
+  // Default true si se omite (compatibilidad con clientes que no lo mandan):
+  // @ValidateIf sólo salta pricePerHour cuando viene explícitamente false.
+  @IsOptional()
+  @IsBoolean()
+  hourlyEnabled?: boolean;
+
+  @ValidateIf((dto: CreateParkingSpotDto) => dto.hourlyEnabled !== false)
   @IsNumber()
-  @Min(0)
-  pricePerHour!: number;
+  @Min(0.01)
+  pricePerHour?: number;
 
   @IsOptional()
   @IsBoolean()
   covered?: boolean;
+
+  // Para qué tipo(s) de vehículo es apta -- ver el comentario en
+  // ParkingSpot.vehicleTypes. Obligatorio y no vacío: a diferencia de otras
+  // características, acá no hay un default razonable que asumir en
+  // silencio, el dueño tiene que elegir al menos uno.
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsIn(VEHICLE_TYPES, { each: true })
+  vehicleTypes!: VehicleType[];
 
   // Lugares idénticos que alquila esta cochera contra el mismo id (playa de
   // estacionamiento). Omitido = 1 (cochera común).
@@ -105,4 +125,12 @@ export class CreateParkingSpotDto {
   @IsOptional()
   @IsISO8601({ strict: true })
   stayAvailableFrom?: string;
+
+  // Fecha (YYYY-MM-DD) hasta la que se acepta una estadía -- opcional, igual
+  // que stayAvailableFrom. Sirve para publicar la cochera por una ventana
+  // acotada (p.ej. un fin de semana) en vez de dejarla ofrecida para
+  // siempre. Ver StaysService.getQuote.
+  @IsOptional()
+  @IsISO8601({ strict: true })
+  stayAvailableUntil?: string;
 }

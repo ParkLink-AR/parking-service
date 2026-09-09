@@ -84,6 +84,60 @@ export class SchemaBootstrapService implements OnModuleInit {
       END$$;
     `);
 
+    // Backstop de la parte final de validateStayCoherence: si las dos
+    // fechas de la ventana de estadía están cargadas, la de "hasta" no
+    // puede ser anterior a la de "desde".
+    await this.dataSource.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'chk_parking_spots_stay_window'
+        ) THEN
+          ALTER TABLE parking_spots
+            ADD CONSTRAINT chk_parking_spots_stay_window
+            CHECK (
+              stay_available_from IS NULL
+              OR stay_available_until IS NULL
+              OR stay_available_until >= stay_available_from
+            );
+        END IF;
+      END$$;
+    `);
+
+    // Backstop de ParkingSpotsService.validateHourlyCoherence: si
+    // hourly_enabled es true, price_per_hour tiene que estar cargado --
+    // misma idea que chk_parking_spots_stay_fields arriba.
+    await this.dataSource.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'chk_parking_spots_hourly_fields'
+        ) THEN
+          ALTER TABLE parking_spots
+            ADD CONSTRAINT chk_parking_spots_hourly_fields
+            CHECK (
+              hourly_enabled = false
+              OR (price_per_hour IS NOT NULL AND price_per_hour > 0)
+            );
+        END IF;
+      END$$;
+    `);
+
+    // Una cochera tiene que ofrecer alquiler por hora, por estadía, o ambos
+    // -- ninguna de las dos formas de reservarla puede estar apagada a la vez.
+    await this.dataSource.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'chk_parking_spots_at_least_one_mode'
+        ) THEN
+          ALTER TABLE parking_spots
+            ADD CONSTRAINT chk_parking_spots_at_least_one_mode
+            CHECK (hourly_enabled = true OR stay_enabled = true);
+        END IF;
+      END$$;
+    `);
+
     this.logger.log('Schema bootstrap OK (btree_gist, parking_spot_schedules + parking_spots constraints).');
   }
 }

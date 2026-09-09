@@ -23,8 +23,13 @@ __decorate([
 ], UpdateParkingSpotDto.prototype, "description", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], UpdateParkingSpotDto.prototype, "hourlyEnabled", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsNumber)(),
-    (0, class_validator_1.Min)(0),
+    (0, class_validator_1.Min)(0.01),
     __metadata("design:type", Number)
 ], UpdateParkingSpotDto.prototype, "pricePerHour", void 0);
 __decorate([

@@ -38,8 +38,14 @@ __decorate([
     __metadata("design:type", Number)
 ], CreateParkingSpotDto.prototype, "lng", void 0);
 __decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], CreateParkingSpotDto.prototype, "hourlyEnabled", void 0);
+__decorate([
+    (0, class_validator_1.ValidateIf)((dto) => dto.hourlyEnabled !== false),
     (0, class_validator_1.IsNumber)(),
-    (0, class_validator_1.Min)(0),
+    (0, class_validator_1.Min)(0.01),
     __metadata("design:type", Number)
 ], CreateParkingSpotDto.prototype, "pricePerHour", void 0);
 __decorate([

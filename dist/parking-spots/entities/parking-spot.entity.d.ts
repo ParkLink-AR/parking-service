@@ -11,7 +11,8 @@ export declare class ParkingSpot {
     description: string;
     address: string;
     location: any;
-    pricePerHour: number;
+    hourlyEnabled: boolean;
+    pricePerHour: number | null;
     stayEnabled: boolean;
     pricePerDay: number | null;
     pricePerWeek: number | null;

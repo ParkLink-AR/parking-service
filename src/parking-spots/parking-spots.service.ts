@@ -8,6 +8,7 @@ import { CreateParkingSpotDto } from './dto/create-parking-spot.dto';
 import { UpdateParkingSpotDto } from './dto/update-parking-spot.dto';
 import { ScheduleEntryDto } from './dto/schedule-entry.dto';
 import { BookingClientService } from '../booking-client/booking-client.service';
+import { VehicleType } from './vehicle-type';
 
 export interface ScheduleEntryResponse {
   dayOfWeek: number;
@@ -28,7 +29,10 @@ export interface ParkingSpotResponse {
   address: string;
   lat: number;
   lng: number;
-  pricePerHour: number;
+  // null cuando hourlyEnabled es false (una cochera "solo estadía" no
+  // publica precio ni horario por hora).
+  hourlyEnabled: boolean;
+  pricePerHour: number | null;
   // "Estadía": ver el comentario en la entidad ParkingSpot. Los precios
   // quedan en null cuando stayEnabled es false (una cochera común no tiene
   // por qué declararlos).
@@ -37,8 +41,10 @@ export interface ParkingSpotResponse {
   pricePerWeek: number | null;
   pricePerMonth: number | null;
   stayAvailableFrom: string | null;
+  stayAvailableUntil: string | null;
   maxStayDays: number | null;
   covered: boolean;
+  vehicleTypes: VehicleType[];
   instantBooking: boolean;
   // Lugares idénticos que se alquilan contra este mismo id (playa). 1 = cochera común.
   capacity: number;
@@ -65,14 +71,17 @@ const BASE_COLUMNS: Array<[string, string]> = [
   ['spot.title', 'title'],
   ['spot.description', 'description'],
   ['spot.address', 'address'],
+  ['spot.hourlyEnabled', 'hourlyEnabled'],
   ['spot.pricePerHour', 'pricePerHour'],
   ['spot.stayEnabled', 'stayEnabled'],
   ['spot.pricePerDay', 'pricePerDay'],
   ['spot.pricePerWeek', 'pricePerWeek'],
   ['spot.pricePerMonth', 'pricePerMonth'],
   ['spot.stayAvailableFrom', 'stayAvailableFrom'],
+  ['spot.stayAvailableUntil', 'stayAvailableUntil'],
   ['spot.maxStayDays', 'maxStayDays'],
   ['spot.covered', 'covered'],
+  ['spot.vehicleTypes', 'vehicleTypes'],
   ['spot.instantBooking', 'instantBooking'],
   ['spot.capacity', 'capacity'],
   ['spot.photos', 'photos'],
@@ -110,14 +119,19 @@ function toResponse(
     address: raw.address,
     lat: parseFloat(raw.lat),
     lng: parseFloat(raw.lng),
-    pricePerHour: parseFloat(raw.pricePerHour),
+    hourlyEnabled: raw.hourlyEnabled,
+    pricePerHour: parseNullableFloat(raw.pricePerHour),
     stayEnabled: raw.stayEnabled,
     pricePerDay: parseNullableFloat(raw.pricePerDay),
     pricePerWeek: parseNullableFloat(raw.pricePerWeek),
     pricePerMonth: parseNullableFloat(raw.pricePerMonth),
     stayAvailableFrom: raw.stayAvailableFrom ?? null,
+    stayAvailableUntil: raw.stayAvailableUntil ?? null,
     maxStayDays: raw.maxStayDays === null || raw.maxStayDays === undefined ? null : Number(raw.maxStayDays),
     covered: raw.covered,
+    // Filas anteriores a este campo quedan null -- toda cochera era
+    // implícitamente para autos antes de que existiera esta selección.
+    vehicleTypes: raw.vehicleTypes ?? [VehicleType.CAR],
     instantBooking: raw.instantBooking,
     capacity: Number(raw.capacity ?? 1),
     schedule,
@@ -261,6 +275,9 @@ export class ParkingSpotsService {
 
     if (filters.stayOnly) {
       query.andWhere('spot.stayEnabled = true');
+      // No mostrar cocheras cuya ventana de estadía ya venció -- ver el
+      // comentario en ParkingSpot.stayAvailableUntil.
+      query.andWhere('(spot.stayAvailableUntil IS NULL OR spot.stayAvailableUntil >= CURRENT_DATE)');
     }
 
     const raw = await query.getRawMany();
@@ -318,20 +335,26 @@ export class ParkingSpotsService {
    * si usó su ubicación actual), así que create() no vuelve a geocodificar.
    */
   async create(dto: CreateParkingSpotDto, ownerId: string): Promise<ParkingSpotResponse> {
+    if (dto.hourlyEnabled === false && !dto.stayEnabled) {
+      throw new BadRequestException('La cochera tiene que ofrecer alquiler por hora, por estadía, o ambos.');
+    }
     if (dto.schedule) validateNoScheduleOverlap(dto.schedule);
 
     const spot = this.parkingSpotRepo.create({
       title: dto.title,
       description: dto.description,
       address: dto.address,
-      pricePerHour: dto.pricePerHour,
+      hourlyEnabled: dto.hourlyEnabled ?? true,
+      pricePerHour: dto.hourlyEnabled === false ? null : dto.pricePerHour!,
       stayEnabled: dto.stayEnabled ?? false,
       pricePerDay: dto.stayEnabled ? dto.pricePerDay! : null,
       pricePerWeek: dto.stayEnabled ? dto.pricePerWeek! : null,
       pricePerMonth: dto.stayEnabled ? dto.pricePerMonth! : null,
       maxStayDays: dto.stayEnabled ? dto.maxStayDays! : null,
       stayAvailableFrom: dto.stayEnabled ? (dto.stayAvailableFrom ?? null) : null,
+      stayAvailableUntil: dto.stayEnabled ? (dto.stayAvailableUntil ?? null) : null,
       covered: dto.covered ?? false,
+      vehicleTypes: dto.vehicleTypes,
       instantBooking: dto.instantBooking ?? true,
       capacity: dto.capacity ?? 1,
       rules: dto.rules ?? [],
@@ -341,8 +364,19 @@ export class ParkingSpotsService {
         type: 'Point',
         coordinates: [dto.lng, dto.lat],
       },
-      schedule: (dto.schedule ?? []).map((entry) => this.scheduleRepo.create(entry)),
+      // Sin alquiler por hora no tiene sentido publicar un horario -- se
+      // ignora lo que venga en dto.schedule igual que pasa con las tarifas
+      // de estadía cuando stayEnabled es false.
+      schedule: dto.hourlyEnabled === false ? [] : (dto.schedule ?? []).map((entry) => this.scheduleRepo.create(entry)),
     });
+
+    // Las tarifas/maxStayDays/pricePerHour ya los exige el DTO vía
+    // @ValidateIf, pero el orden stayAvailableFrom/Until no tiene
+    // equivalente ahí -- sin este llamado, un stayAvailableUntil anterior a
+    // stayAvailableFrom llegaba crudo hasta el CHECK de la DB y volvía como
+    // 500 en vez de un 400 legible.
+    if (spot.hourlyEnabled) this.validateHourlyCoherence(spot);
+    if (spot.stayEnabled) this.validateStayCoherence(spot);
 
     const saved = await this.parkingSpotRepo.save(spot);
     return this.findById(saved.id);
@@ -352,9 +386,11 @@ export class ParkingSpotsService {
     const spot = await this.parkingSpotRepo.findOne({ where: { id } });
     if (!spot) throw new NotFoundException('Cochera no encontrada');
 
+    if (dto.hourlyEnabled !== undefined) spot.hourlyEnabled = dto.hourlyEnabled;
     if (dto.pricePerHour !== undefined) spot.pricePerHour = dto.pricePerHour;
     if (dto.description !== undefined) spot.description = dto.description;
     if (dto.covered !== undefined) spot.covered = dto.covered;
+    if (dto.vehicleTypes !== undefined) spot.vehicleTypes = dto.vehicleTypes;
     if (dto.instantBooking !== undefined) spot.instantBooking = dto.instantBooking;
     if (dto.capacity !== undefined) spot.capacity = dto.capacity;
 
@@ -364,11 +400,16 @@ export class ParkingSpotsService {
     if (dto.pricePerMonth !== undefined) spot.pricePerMonth = dto.pricePerMonth;
     if (dto.maxStayDays !== undefined) spot.maxStayDays = dto.maxStayDays;
     if (dto.stayAvailableFrom !== undefined) spot.stayAvailableFrom = dto.stayAvailableFrom;
+    if (dto.stayAvailableUntil !== undefined) spot.stayAvailableUntil = dto.stayAvailableUntil;
     // A diferencia de create() (donde el DTO ya exige las 4 juntas vía
     // @ValidateIf), acá cada campo llega independiente en un PATCH parcial --
     // se valida contra el estado final ya mergeado, no contra lo que vino en
     // este request puntual, porque "habilitar" y "cargar las tarifas" pueden
     // ser dos requests distintos.
+    if (!spot.hourlyEnabled && !spot.stayEnabled) {
+      throw new BadRequestException('La cochera tiene que ofrecer alquiler por hora, por estadía, o ambos.');
+    }
+    if (spot.hourlyEnabled) this.validateHourlyCoherence(spot);
     if (spot.stayEnabled) this.validateStayCoherence(spot);
 
     const changingLocation = dto.address !== undefined || dto.lat !== undefined || dto.lng !== undefined;
@@ -427,6 +468,21 @@ export class ParkingSpotsService {
       throw new BadRequestException(
         'Para habilitar la estadía hay que cargar pricePerDay, pricePerWeek, pricePerMonth y maxStayDays.',
       );
+    }
+    if (
+      spot.stayAvailableFrom !== null &&
+      spot.stayAvailableUntil !== null &&
+      spot.stayAvailableUntil < spot.stayAvailableFrom
+    ) {
+      throw new BadRequestException('stayAvailableUntil no puede ser anterior a stayAvailableFrom.');
+    }
+  }
+
+  // Misma idea que validateStayCoherence, reforzada por el CHECK
+  // chk_parking_spots_hourly_fields que agrega SchemaBootstrapService.
+  private validateHourlyCoherence(spot: ParkingSpot): void {
+    if (spot.pricePerHour === null) {
+      throw new BadRequestException('Para habilitar el alquiler por hora hay que cargar pricePerHour.');
     }
   }
 

@@ -5,7 +5,8 @@ export declare class CreateParkingSpotDto {
     address: string;
     lat: number;
     lng: number;
-    pricePerHour: number;
+    hourlyEnabled?: boolean;
+    pricePerHour?: number;
     covered?: boolean;
     capacity?: number;
     instantBooking?: boolean;

@@ -66,6 +66,11 @@ export class StaysService {
     if (startDate < availableFrom) {
       throw new BadRequestException(`Esta cochera acepta estadías a partir del ${availableFrom}.`);
     }
+    // La estadía completa (checkin + duración) tiene que caer dentro de la
+    // ventana publicada -- ver el comentario en ParkingSpot.stayAvailableUntil.
+    if (spot.stayAvailableUntil !== null && endDate > spot.stayAvailableUntil) {
+      throw new BadRequestException(`Esta cochera acepta estadías hasta el ${spot.stayAvailableUntil}.`);
+    }
 
     // spot.maxStayDays no debería ser null acá (stayEnabled=true lo exige,
     // reforzado por el CHECK de la DB) -- el chequeo de todos modos no

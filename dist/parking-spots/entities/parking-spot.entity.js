@@ -52,8 +52,12 @@ __decorate([
     __metadata("design:type", Object)
 ], ParkingSpot.prototype, "location", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'decimal', precision: 10, scale: 2 }),
-    __metadata("design:type", Number)
+    (0, typeorm_1.Column)({ name: 'hourly_enabled', default: true }),
+    __metadata("design:type", Boolean)
+], ParkingSpot.prototype, "hourlyEnabled", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'decimal', precision: 10, scale: 2, nullable: true }),
+    __metadata("design:type", Object)
 ], ParkingSpot.prototype, "pricePerHour", void 0);
 __decorate([
     (0, typeorm_1.Column)({ name: 'stay_enabled', default: false }),

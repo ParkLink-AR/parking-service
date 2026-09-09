@@ -27,6 +27,7 @@ const BASE_COLUMNS = [
     ['spot.title', 'title'],
     ['spot.description', 'description'],
     ['spot.address', 'address'],
+    ['spot.hourlyEnabled', 'hourlyEnabled'],
     ['spot.pricePerHour', 'pricePerHour'],
     ['spot.stayEnabled', 'stayEnabled'],
     ['spot.pricePerDay', 'pricePerDay'],
@@ -62,7 +63,8 @@ function toResponse(raw, schedule, distanceMeters) {
         address: raw.address,
         lat: parseFloat(raw.lat),
         lng: parseFloat(raw.lng),
-        pricePerHour: parseFloat(raw.pricePerHour),
+        hourlyEnabled: raw.hourlyEnabled,
+        pricePerHour: parseNullableFloat(raw.pricePerHour),
         stayEnabled: raw.stayEnabled,
         pricePerDay: parseNullableFloat(raw.pricePerDay),
         pricePerWeek: parseNullableFloat(raw.pricePerWeek),
@@ -210,13 +212,17 @@ let ParkingSpotsService = ParkingSpotsService_1 = class ParkingSpotsService {
         return spot;
     }
     async create(dto, ownerId) {
+        if (dto.hourlyEnabled === false && !dto.stayEnabled) {
+            throw new common_1.BadRequestException('La cochera tiene que ofrecer alquiler por hora, por estadía, o ambos.');
+        }
         if (dto.schedule)
             validateNoScheduleOverlap(dto.schedule);
         const spot = this.parkingSpotRepo.create({
             title: dto.title,
             description: dto.description,
             address: dto.address,
-            pricePerHour: dto.pricePerHour,
+            hourlyEnabled: dto.hourlyEnabled ?? true,
+            pricePerHour: dto.hourlyEnabled === false ? null : dto.pricePerHour,
             stayEnabled: dto.stayEnabled ?? false,
             pricePerDay: dto.stayEnabled ? dto.pricePerDay : null,
             pricePerWeek: dto.stayEnabled ? dto.pricePerWeek : null,
@@ -232,7 +238,7 @@ let ParkingSpotsService = ParkingSpotsService_1 = class ParkingSpotsService {
                 type: 'Point',
                 coordinates: [dto.lng, dto.lat],
             },
-            schedule: (dto.schedule ?? []).map((entry) => this.scheduleRepo.create(entry)),
+            schedule: dto.hourlyEnabled === false ? [] : (dto.schedule ?? []).map((entry) => this.scheduleRepo.create(entry)),
         });
         const saved = await this.parkingSpotRepo.save(spot);
         return this.findById(saved.id);
@@ -241,6 +247,8 @@ let ParkingSpotsService = ParkingSpotsService_1 = class ParkingSpotsService {
         const spot = await this.parkingSpotRepo.findOne({ where: { id } });
         if (!spot)
             throw new common_1.NotFoundException('Cochera no encontrada');
+        if (dto.hourlyEnabled !== undefined)
+            spot.hourlyEnabled = dto.hourlyEnabled;
         if (dto.pricePerHour !== undefined)
             spot.pricePerHour = dto.pricePerHour;
         if (dto.description !== undefined)
@@ -263,6 +271,11 @@ let ParkingSpotsService = ParkingSpotsService_1 = class ParkingSpotsService {
             spot.maxStayDays = dto.maxStayDays;
         if (dto.stayAvailableFrom !== undefined)
             spot.stayAvailableFrom = dto.stayAvailableFrom;
+        if (!spot.hourlyEnabled && !spot.stayEnabled) {
+            throw new common_1.BadRequestException('La cochera tiene que ofrecer alquiler por hora, por estadía, o ambos.');
+        }
+        if (spot.hourlyEnabled)
+            this.validateHourlyCoherence(spot);
         if (spot.stayEnabled)
             this.validateStayCoherence(spot);
         const changingLocation = dto.address !== undefined || dto.lat !== undefined || dto.lng !== undefined;
@@ -296,6 +309,11 @@ let ParkingSpotsService = ParkingSpotsService_1 = class ParkingSpotsService {
             spot.pricePerMonth === null ||
             spot.maxStayDays === null) {
             throw new common_1.BadRequestException('Para habilitar la estadía hay que cargar pricePerDay, pricePerWeek, pricePerMonth y maxStayDays.');
+        }
+    }
+    validateHourlyCoherence(spot) {
+        if (spot.pricePerHour === null) {
+            throw new common_1.BadRequestException('Para habilitar el alquiler por hora hay que cargar pricePerHour.');
         }
     }
     async getOwnedSpot(id, ownerId) {

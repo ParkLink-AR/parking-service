@@ -19,7 +19,8 @@ export interface ParkingSpotResponse {
     address: string;
     lat: number;
     lng: number;
-    pricePerHour: number;
+    hourlyEnabled: boolean;
+    pricePerHour: number | null;
     stayEnabled: boolean;
     pricePerDay: number | null;
     pricePerWeek: number | null;
@@ -54,6 +55,7 @@ export declare class ParkingSpotsService {
     update(id: string, dto: UpdateParkingSpotDto): Promise<ParkingSpotResponse>;
     private replaceSchedule;
     private validateStayCoherence;
+    private validateHourlyCoherence;
     private getOwnedSpot;
     addPhotos(id: string, ownerId: string, urls: string[]): Promise<ParkingSpotResponse>;
     removePhoto(id: string, ownerId: string, url: string): Promise<ParkingSpotResponse>;

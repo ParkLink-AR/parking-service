@@ -1,7 +1,9 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayNotEmpty,
   IsArray,
   IsBoolean,
+  IsIn,
   IsInt,
   IsISO8601,
   IsLatitude,
@@ -14,20 +16,37 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { ScheduleEntryDto } from './schedule-entry.dto';
+import { VehicleType, VEHICLE_TYPES } from '../vehicle-type';
 
 export class UpdateParkingSpotDto {
   @IsOptional()
   @IsString()
   description?: string;
 
+  // Alquiler por hora -- ver el comentario en ParkingSpot.hourlyEnabled. Al
+  // igual que stayEnabled, acá es un PATCH parcial: la coherencia
+  // "si hourlyEnabled=true, pricePerHour tiene que existir" se valida en
+  // ParkingSpotsService.update() contra el estado ya mergeado.
+  @IsOptional()
+  @IsBoolean()
+  hourlyEnabled?: boolean;
+
   @IsOptional()
   @IsNumber()
-  @Min(0)
+  @Min(0.01)
   pricePerHour?: number;
 
   @IsOptional()
   @IsBoolean()
   covered?: boolean;
+
+  // Igual que en create: si viene, no puede ser un array vacío -- una
+  // cochera siempre tiene que quedar apta para al menos un tipo de vehículo.
+  @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsIn(VEHICLE_TYPES, { each: true })
+  vehicleTypes?: VehicleType[];
 
   @IsOptional()
   @IsBoolean()
@@ -100,4 +119,8 @@ export class UpdateParkingSpotDto {
   @IsOptional()
   @IsISO8601({ strict: true })
   stayAvailableFrom?: string;
+
+  @IsOptional()
+  @IsISO8601({ strict: true })
+  stayAvailableUntil?: string;
 }

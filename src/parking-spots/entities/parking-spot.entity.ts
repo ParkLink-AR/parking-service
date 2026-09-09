@@ -8,6 +8,7 @@ import {
   OneToMany,
 } from 'typeorm';
 import { ParkingSpotSchedule } from './parking-spot-schedule.entity';
+import { VehicleType } from '../vehicle-type';
 
 export enum ParkingSpotStatus {
   ACTIVE = 'active',
@@ -45,8 +46,21 @@ export class ParkingSpot {
   })
   location!: any; // GeoJSON object o string WKT
 
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
-  pricePerHour!: number;
+  // Alquiler por hora. Deliberadamente separado en un toggle (como
+  // stayEnabled más abajo) en vez de asumido siempre activo: un dueño puede
+  // ofrecer sólo estadía y no publicar ningún horario. Default true para no
+  // cambiar el comportamiento de las cocheras que ya existen (todas eran
+  // "por hora" antes de que existiera este toggle).
+  @Column({ name: 'hourly_enabled', default: true })
+  hourlyEnabled!: boolean;
+
+  // null cuando hourlyEnabled es false -- ver el CHECK que agrega
+  // SchemaBootstrapService y CreateParkingSpotDto/UpdateParkingSpotDto.
+  // name explícito para que quede snake_case como sus hermanas price_per_day
+  // /price_per_week/price_per_month (antes de este cambio no lo tenía, y la
+  // columna quedó como "pricePerHour" literal en la DB).
+  @Column({ name: 'price_per_hour', type: 'decimal', precision: 10, scale: 2, nullable: true })
+  pricePerHour!: number | null;
 
   // "Estadía": alquiler de la cochera por día/semana/mes en vez de por hora
   // (p.ej. quien viaja y necesita dejar el auto varios días). Deliberadamente
@@ -73,6 +87,15 @@ export class ParkingSpot {
   @Column({ name: 'stay_available_from', type: 'date', nullable: true })
   stayAvailableFrom!: string | null;
 
+  // Fecha (YYYY-MM-DD) hasta la que se acepta una estadía -- opcional, igual
+  // que stayAvailableFrom: null significa "sin fecha límite". Sirve para
+  // publicar la cochera por una ventana acotada (p.ej. un fin de semana
+  // puntual) en vez de que la estadía quede ofrecida indefinidamente. La
+  // estadía completa (checkin + duración) tiene que caer dentro de
+  // [stayAvailableFrom, stayAvailableUntil] -- ver StaysService.getQuote.
+  @Column({ name: 'stay_available_until', type: 'date', nullable: true })
+  stayAvailableUntil!: string | null;
+
   // Duración máxima de una estadía, en días (una semana = 7, un mes = 30 --
   // ver StaysService.UNIT_DAYS). Sin esto un conductor podría pedir una
   // "estadía" de dos años.
@@ -81,6 +104,14 @@ export class ParkingSpot {
 
   @Column({ default: false })
   covered!: boolean;
+
+  // Para qué tipo(s) de vehículo es apta la cochera -- una cochera puede
+  // aceptar más de uno (p.ej. auto y moto), así que es un array, no un
+  // único valor. null en filas viejas anteriores a este campo -- el
+  // fallback a ['car'] vive en ParkingSpotsService.toResponse (antes de
+  // este campo, toda cochera era implícitamente para autos).
+  @Column({ name: 'vehicle_types', type: 'jsonb', nullable: true })
+  vehicleTypes!: VehicleType[] | null;
 
   // Si es false, una reserva pagada no pasa a CONFIRMED sola -- queda
   // PENDING_OWNER_APPROVAL hasta que el dueño la apruebe o la rechace (ver
