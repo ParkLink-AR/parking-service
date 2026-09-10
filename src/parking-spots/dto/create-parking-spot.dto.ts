@@ -57,7 +57,7 @@ export class CreateParkingSpotDto {
   @Min(0.01)
   pricePerHour?: number;
 
-  // Precio por hora distinto según el tipo de vehículo (auto/pickup/moto/
+  // Precio por hora distinto según el tipo de vehículo (auto/pickup/SUV/moto/
   // bici) -- alternativa a pricePerHour para cocheras donde no todos pagan
   // lo mismo (p.ej. una moto más barata que una camioneta). La forma exacta
   // (una entrada por cada tipo en vehicleTypes, valores positivos) se

@@ -296,6 +296,14 @@ export class ParkingSpotsService {
       query.andWhere('(spot.stayAvailableUntil IS NULL OR spot.stayAvailableUntil >= CURRENT_DATE)');
     }
 
+    if (filters.hourlyOnly) {
+      query.andWhere('spot.hourlyEnabled = true');
+    }
+
+    if (filters.instantBooking) {
+      query.andWhere('spot.instantBooking = true');
+    }
+
     const raw = await query.getRawMany();
     const schedules = await this.scheduleForMany(raw.map((row) => row.id));
     const spots = raw.map((row) => toResponse(row, schedules.get(row.id) ?? [], parseFloat(row.distanceM)));

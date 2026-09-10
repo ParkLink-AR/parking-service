@@ -4,6 +4,7 @@
 export enum VehicleType {
   CAR = 'car',
   PICKUP = 'pickup',
+  SUV = 'suv',
   MOTORCYCLE = 'motorcycle',
   BICYCLE = 'bicycle',
 }

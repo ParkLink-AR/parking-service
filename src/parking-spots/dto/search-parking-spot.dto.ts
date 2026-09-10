@@ -43,11 +43,29 @@ export class SearchParkingSpotDto {
   @IsBoolean()
   stayOnly?: boolean;
 
+  // Sólo cocheras con alquiler por hora habilitado -- contraparte de
+  // stayOnly, para cuando el conductor quiere específicamente una franja
+  // horaria y no le interesan las que sólo ofrecen estadía. Ninguno de los
+  // dos excluye al otro a nivel DTO (una cochera puede ofrecer ambos y
+  // pasar los dos filtros a la vez); es mobile quien los usa como
+  // mutuamente excluyentes en su UI.
+  @IsOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
+  hourlyOnly?: boolean;
+
+  // Sólo cocheras con confirmación automática (ParkingSpot.instantBooking) --
+  // para el conductor que no quiere esperar a que el dueño apruebe.
+  @IsOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
+  instantBooking?: boolean;
+
   // Ventana horaria deseada (ISO 8601 con offset, ej. "2026-08-24T08:00:00-03:00").
   // Van juntos: si viene uno tiene que venir el otro (mismo criterio que
-  // address/lat/lng en UpdateParkingSpotDto). Por ahora ParkingSpotsService.search()
-  // los recibe y los ignora -- todavía no hay lógica de disponibilidad acá, esto
-  // sólo declara el contrato para cuando se sume.
+  // address/lat/lng en UpdateParkingSpotDto). ParkingSpotsService.search()
+  // los usa para filtrar por disponibilidad real vía booking-service (ver
+  // BookingClientService.getBookableSpotIds).
   @ValidateIf((dto: SearchParkingSpotDto) => dto.from !== undefined || dto.to !== undefined)
   @IsISO8601()
   from?: string;
