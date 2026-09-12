@@ -38,9 +38,10 @@ export class FavoritesService {
 
   /**
    * Cocheras favoriteadas por el usuario, con el mismo shape que el resto de
-   * la API (ver ParkingSpotsService.findById). Las que ya no existen o
-   * dejaron de estar activas (soft-delete) se descartan en silencio en vez
-   * de romper la lista completa.
+   * la API (ver ParkingSpotsService.findById) -- una pausada por su dueño
+   * sigue apareciendo acá (findById la deja pasar), el mobile la marca como
+   * no disponible mostrando su status. Sólo las borradas (soft-delete) se
+   * descartan en silencio en vez de romper la lista completa.
    */
   async listSpots(userId: string): Promise<ParkingSpotResponse[]> {
     const ids = await this.listIds(userId);
