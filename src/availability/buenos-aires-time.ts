@@ -6,8 +6,15 @@ export const BUENOS_AIRES_OFFSET_HOURS = -3;
 
 /** The UTC instant corresponding to Buenos Aires local midnight on dateISO (YYYY-MM-DD). */
 export function buenosAiresMidnight(dateISO: string): Date {
+  return buenosAiresDateTime(dateISO, 0);
+}
+
+/** The UTC instant corresponding to `hour`:00 Buenos Aires local time on dateISO
+ * (YYYY-MM-DD) -- e.g. a stay's check-in/check-out instant, which isn't
+ * necessarily midnight (see StaysService.getQuote). */
+export function buenosAiresDateTime(dateISO: string, hour: number): Date {
   const [year, month, day] = dateISO.split('-').map(Number);
-  return new Date(Date.UTC(year, month - 1, day, -BUENOS_AIRES_OFFSET_HOURS));
+  return new Date(Date.UTC(year, month - 1, day, hour - BUENOS_AIRES_OFFSET_HOURS));
 }
 
 /** Formats a UTC instant as RFC3339 with the Buenos Aires offset, e.g. "2026-08-18T08:00:00-03:00". */
@@ -18,14 +25,8 @@ export function formatBuenosAires(date: Date): string {
 
 /** Advances a YYYY-MM-DD calendar date by one day. */
 export function addOneDay(dateISO: string): string {
-  return addDays(dateISO, 1);
-}
-
-/** Advances a YYYY-MM-DD calendar date by `days` days (used by StaysService to turn a
- * stay's start date + duration into its end date). */
-export function addDays(dateISO: string, days: number): string {
   const [year, month, day] = dateISO.split('-').map(Number);
-  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+  return new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10);
 }
 
 /** Yields each calendar date (YYYY-MM-DD) in the half-open range [from, to). */

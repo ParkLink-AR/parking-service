@@ -106,9 +106,8 @@ export class ParkingSpot {
   @Column({ name: 'stay_available_until', type: 'date', nullable: true })
   stayAvailableUntil!: string | null;
 
-  // Duración máxima de una estadía, en días (una semana = 7, un mes = 30 --
-  // ver StaysService.UNIT_DAYS). Sin esto un conductor podría pedir una
-  // "estadía" de dos años.
+  // Duración máxima de una estadía, en días. Sin esto un conductor podría
+  // pedir una "estadía" de dos años.
   @Column({ name: 'max_stay_days', type: 'int', nullable: true })
   maxStayDays!: number | null;
 

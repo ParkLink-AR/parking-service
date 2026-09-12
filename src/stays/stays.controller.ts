@@ -14,16 +14,16 @@ export class StaysController {
 
   @Get(':id/stays/quote')
   getQuote(@Param('id', ParseUUIDPipe) id: string, @Query() query: StayQuoteQueryDto) {
-    return this.staysService.getQuote(id, query.startDate, query.unit, query.count);
+    return this.staysService.getQuote(id, query.startDate, query.endDate, query.startHour);
   }
 
-  // Calendario de disponibilidad para elegir fecha de inicio de estadía --
-  // contraparte de GET .../availability (horaria) para el otro modo de
+  // Calendario de disponibilidad para elegir fecha de inicio/fin de estadía
+  // -- contraparte de GET .../availability (horaria) para el otro modo de
   // reserva. Antes que la ruta de arriba en el código no importa: son
   // sufijos literales distintos sobre el mismo :id, no hay ambigüedad de
   // matching entre "quote" y "availability".
   @Get(':id/stays/availability')
   getAvailabilityCalendar(@Param('id', ParseUUIDPipe) id: string, @Query() query: StayAvailabilityQueryDto) {
-    return this.staysService.getAvailabilityCalendar(id, query.from, query.to, query.unit, query.count);
+    return this.staysService.getAvailabilityCalendar(id, query.from, query.to);
   }
 }
