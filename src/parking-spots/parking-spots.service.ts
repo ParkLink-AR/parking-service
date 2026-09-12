@@ -111,6 +111,28 @@ function parseNullableFloat(value: unknown): number | null {
   return value === null || value === undefined ? null : parseFloat(value as string);
 }
 
+// getRawMany()/getRawOne() (usado por selectBaseColumns más abajo) evita por
+// completo la hidratación de entidades de TypeORM -- una columna `date` no
+// vuelve como el string "YYYY-MM-DD" que promete ParkingSpotResponse, sino
+// como el Date crudo que arma el type parser de `pg` (ver node-postgres,
+// OID 1082). Serializado a JSON eso sale como datetime completo
+// ("...T00:00:00.000Z"), que rompe todo lo que espera fecha pura -- el
+// cálculo de fechas de StaysService, y este mismo valor reenviado tal cual
+// por mobile como startDate de una cotización de estadía. Los getters
+// locales (no getUTC*) son la inversa correcta de cómo `pg` arma ese Date
+// (con el constructor local `new Date(year, month, day)`), así que esto da
+// el mismo año/mes/día sin importar en qué huso horario corra el proceso.
+function toPlainDate(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) {
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, '0');
+    const d = String(value.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return String(value).slice(0, 10);
+}
+
 function toResponse(
   raw: Record<string, any>,
   schedule: ScheduleEntryResponse[],
@@ -131,8 +153,8 @@ function toResponse(
     pricePerDay: parseNullableFloat(raw.pricePerDay),
     pricePerWeek: parseNullableFloat(raw.pricePerWeek),
     pricePerMonth: parseNullableFloat(raw.pricePerMonth),
-    stayAvailableFrom: raw.stayAvailableFrom ?? null,
-    stayAvailableUntil: raw.stayAvailableUntil ?? null,
+    stayAvailableFrom: toPlainDate(raw.stayAvailableFrom),
+    stayAvailableUntil: toPlainDate(raw.stayAvailableUntil),
     maxStayDays: raw.maxStayDays === null || raw.maxStayDays === undefined ? null : Number(raw.maxStayDays),
     covered: raw.covered,
     // Filas anteriores a este campo quedan null -- toda cochera era
