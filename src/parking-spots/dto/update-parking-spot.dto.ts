@@ -12,6 +12,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  Matches,
   Max,
   Min,
   ValidateNested,
@@ -126,9 +127,11 @@ export class UpdateParkingSpotDto {
 
   @IsOptional()
   @IsISO8601({ strict: true })
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'stayAvailableFrom must be a plain date in YYYY-MM-DD format' })
   stayAvailableFrom?: string;
 
   @IsOptional()
   @IsISO8601({ strict: true })
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'stayAvailableUntil must be a plain date in YYYY-MM-DD format' })
   stayAvailableUntil?: string;
 }

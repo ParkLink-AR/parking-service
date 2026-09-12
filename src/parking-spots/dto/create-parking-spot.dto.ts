@@ -11,6 +11,7 @@ import {
   IsNumber,
   IsObject,
   IsOptional,
+  Matches,
   Max,
   Min,
   IsString,
@@ -140,6 +141,7 @@ export class CreateParkingSpotDto {
   // stayEnabled=true -- si no viene, StaysService la trata como "desde hoy".
   @IsOptional()
   @IsISO8601({ strict: true })
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'stayAvailableFrom must be a plain date in YYYY-MM-DD format' })
   stayAvailableFrom?: string;
 
   // Fecha (YYYY-MM-DD) hasta la que se acepta una estadía -- opcional, igual
@@ -148,5 +150,6 @@ export class CreateParkingSpotDto {
   // siempre. Ver StaysService.getQuote.
   @IsOptional()
   @IsISO8601({ strict: true })
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'stayAvailableUntil must be a plain date in YYYY-MM-DD format' })
   stayAvailableUntil?: string;
 }
