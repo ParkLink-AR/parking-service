@@ -1,7 +1,50 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
+import { AxiosError } from 'axios';
 import { firstValueFrom } from 'rxjs';
+
+// Nominatim's usage policy caps a client at 1 request/second -- with several
+// users typing addresses at once, our own debounce per-user (see mobile's
+// AddressAutocomplete) isn't enough to guarantee that server-wide, and a
+// burst gets us 429'd (seen in production). This serializes every outgoing
+// call through one process-wide queue, spacing them out regardless of how
+// many arrive concurrently; if Nominatim still 429s (e.g. Render's shared
+// egress IP getting rate-limited by other tenants' traffic), it retries once
+// after waiting either Retry-After or a fixed backoff.
+const NOMINATIM_MIN_INTERVAL_MS = 1100; // a bit over 1s for margin
+const NOMINATIM_RETRY_BACKOFF_MS = 2000;
+let nominatimQueue: Promise<void> = Promise.resolve();
+let lastNominatimCallAt = 0;
+
+function throttledNominatimCall<T>(fn: () => Promise<T>): Promise<T> {
+  const scheduled = nominatimQueue.then(async () => {
+    const wait = Math.max(0, lastNominatimCallAt + NOMINATIM_MIN_INTERVAL_MS - Date.now());
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+    lastNominatimCallAt = Date.now();
+  });
+  // Chain off `scheduled` (not the eventual `fn()` result) so a slow/failed
+  // call never blocks -- or throws inside -- the queue itself; each caller
+  // still awaits its own real result via the returned promise below.
+  nominatimQueue = scheduled.catch(() => undefined);
+
+  return scheduled.then(async () => {
+    try {
+      return await fn();
+    } catch (error) {
+      if (error instanceof AxiosError && error.response?.status === 429) {
+        const retryAfterSeconds = Number(error.response.headers?.['retry-after']);
+        const backoff = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+          ? retryAfterSeconds * 1000
+          : NOMINATIM_RETRY_BACKOFF_MS;
+        await new Promise((resolve) => setTimeout(resolve, backoff));
+        lastNominatimCallAt = Date.now();
+        return fn();
+      }
+      throw error;
+    }
+  });
+}
 
 export interface GeocodingResult {
   lat: number;
@@ -77,22 +120,24 @@ export class GeocodingService {
     const baseUrl = this.configService.get<string>('NOMINATIM_BASE_URL');
     const userAgent = this.configService.get<string>('NOMINATIM_USER_AGENT');
 
-    const { data } = await firstValueFrom(
-      this.httpService.get<NominatimResult[]>(`${baseUrl}/search`, {
-        params: {
-          q: query,
-          format: 'json',
-          limit,
-          addressdetails: 1,
-          countrycodes: NOMINATIM_COUNTRY_CODE,
-          viewbox: BUENOS_AIRES_VIEWBOX,
-          bounded: 0,
-        },
-        headers: {
-          // Nominatim requiere un User-Agent identificable; sin esto puede rechazar requests
-          'User-Agent': userAgent,
-        },
-      }),
+    const { data } = await throttledNominatimCall(() =>
+      firstValueFrom(
+        this.httpService.get<NominatimResult[]>(`${baseUrl}/search`, {
+          params: {
+            q: query,
+            format: 'json',
+            limit,
+            addressdetails: 1,
+            countrycodes: NOMINATIM_COUNTRY_CODE,
+            viewbox: BUENOS_AIRES_VIEWBOX,
+            bounded: 0,
+          },
+          headers: {
+            // Nominatim requiere un User-Agent identificable; sin esto puede rechazar requests
+            'User-Agent': userAgent,
+          },
+        }),
+      ),
     );
 
     return (data ?? []).map((result) => ({
@@ -118,13 +163,15 @@ export class GeocodingService {
     const baseUrl = this.configService.get<string>('NOMINATIM_BASE_URL');
     const userAgent = this.configService.get<string>('NOMINATIM_USER_AGENT');
 
-    const { data } = await firstValueFrom(
-      this.httpService.get<NominatimResult>(`${baseUrl}/reverse`, {
-        params: { lat, lon: lng, format: 'json', addressdetails: 1 },
-        headers: {
-          'User-Agent': userAgent,
-        },
-      }),
+    const { data } = await throttledNominatimCall(() =>
+      firstValueFrom(
+        this.httpService.get<NominatimResult>(`${baseUrl}/reverse`, {
+          params: { lat, lon: lng, format: 'json', addressdetails: 1 },
+          headers: {
+            'User-Agent': userAgent,
+          },
+        }),
+      ),
     );
 
     if (!data || !data.address) {
