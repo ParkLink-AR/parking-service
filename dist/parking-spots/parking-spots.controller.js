@@ -23,11 +23,13 @@ const update_parking_spot_dto_1 = require("./dto/update-parking-spot.dto");
 const update_status_dto_1 = require("./dto/update-status.dto");
 const delete_photo_dto_1 = require("./dto/delete-photo.dto");
 const reorder_photos_dto_1 = require("./dto/reorder-photos.dto");
+const parking_spots_batch_query_dto_1 = require("./dto/parking-spots-batch-query.dto");
 const availability_service_1 = require("../availability/availability.service");
 const availability_query_dto_1 = require("../availability/dto/availability-query.dto");
 const storage_service_1 = require("../storage/storage.service");
 const ALLOWED_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const MAX_PHOTO_SIZE_BYTES = 5 * 1024 * 1024;
+const MAX_BATCH_IDS = 100;
 function extensionFor(mimetype) {
     const subtype = mimetype.split('/')[1];
     return subtype === 'jpeg' ? 'jpg' : subtype;
@@ -46,6 +48,13 @@ let ParkingSpotsController = class ParkingSpotsController {
     }
     search(filters) {
         return this.parkingSpotsService.search(filters);
+    }
+    findByIds(query) {
+        const ids = query.ids.split(',');
+        if (ids.length > MAX_BATCH_IDS) {
+            throw new common_1.BadRequestException(`ids must not contain more than ${MAX_BATCH_IDS} entries.`);
+        }
+        return this.parkingSpotsService.findByIds(ids);
     }
     findById(id) {
         return this.parkingSpotsService.findById(id);
@@ -110,6 +119,13 @@ __decorate([
     __metadata("design:paramtypes", [search_parking_spot_dto_1.SearchParkingSpotDto]),
     __metadata("design:returntype", void 0)
 ], ParkingSpotsController.prototype, "search", null);
+__decorate([
+    (0, common_1.Get)('parking-spots'),
+    __param(0, (0, common_1.Query)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [parking_spots_batch_query_dto_1.ParkingSpotsBatchQueryDto]),
+    __metadata("design:returntype", void 0)
+], ParkingSpotsController.prototype, "findByIds", null);
 __decorate([
     (0, common_1.Get)('parking-spots/:id'),
     __param(0, (0, common_1.Param)('id')),

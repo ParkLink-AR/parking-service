@@ -5,6 +5,7 @@ import { SearchParkingSpotDto } from './dto/search-parking-spot.dto';
 import { CreateParkingSpotDto } from './dto/create-parking-spot.dto';
 import { UpdateParkingSpotDto } from './dto/update-parking-spot.dto';
 import { BookingClientService } from '../booking-client/booking-client.service';
+import { VehicleType } from './vehicle-type';
 export interface ScheduleEntryResponse {
     dayOfWeek: number;
     startHour: number;
@@ -21,13 +22,16 @@ export interface ParkingSpotResponse {
     lng: number;
     hourlyEnabled: boolean;
     pricePerHour: number | null;
+    pricePerHourByVehicleType: Partial<Record<VehicleType, number>> | null;
     stayEnabled: boolean;
     pricePerDay: number | null;
     pricePerWeek: number | null;
     pricePerMonth: number | null;
     stayAvailableFrom: string | null;
+    stayAvailableUntil: string | null;
     maxStayDays: number | null;
     covered: boolean;
+    vehicleTypes: VehicleType[];
     instantBooking: boolean;
     capacity: number;
     schedule: ScheduleEntryResponse[];
@@ -51,6 +55,7 @@ export declare class ParkingSpotsService {
     private applyRatings;
     search(filters: SearchParkingSpotDto): Promise<ParkingSpotResponse[]>;
     findById(id: string): Promise<ParkingSpotResponse>;
+    findByIds(ids: string[]): Promise<ParkingSpotResponse[]>;
     create(dto: CreateParkingSpotDto, ownerId: string): Promise<ParkingSpotResponse>;
     update(id: string, dto: UpdateParkingSpotDto): Promise<ParkingSpotResponse>;
     private replaceSchedule;

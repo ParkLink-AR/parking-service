@@ -23,12 +23,14 @@ import { UpdateParkingSpotDto } from './dto/update-parking-spot.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
 import { DeletePhotoDto } from './dto/delete-photo.dto';
 import { ReorderPhotosDto } from './dto/reorder-photos.dto';
+import { ParkingSpotsBatchQueryDto } from './dto/parking-spots-batch-query.dto';
 import { AvailabilityService } from '../availability/availability.service';
 import { AvailabilityQueryDto } from '../availability/dto/availability-query.dto';
 import { StorageService } from '../storage/storage.service';
 
 const ALLOWED_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const MAX_PHOTO_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB, same cap as auth-service's avatar upload
+const MAX_BATCH_IDS = 100;
 
 function extensionFor(mimetype: string): string {
   const subtype = mimetype.split('/')[1];
@@ -55,6 +57,15 @@ export class ParkingSpotsController {
   @Get('parking-spots/search')
   search(@Query() filters: SearchParkingSpotDto) {
     return this.parkingSpotsService.search(filters);
+  }
+
+  @Get('parking-spots')
+  findByIds(@Query() query: ParkingSpotsBatchQueryDto) {
+    const ids = query.ids.split(',');
+    if (ids.length > MAX_BATCH_IDS) {
+      throw new BadRequestException(`ids must not contain more than ${MAX_BATCH_IDS} entries.`);
+    }
+    return this.parkingSpotsService.findByIds(ids);
   }
 
   @Get('parking-spots/:id')

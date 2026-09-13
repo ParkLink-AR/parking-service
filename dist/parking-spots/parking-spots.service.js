@@ -20,6 +20,7 @@ const typeorm_2 = require("typeorm");
 const parking_spot_entity_1 = require("./entities/parking-spot.entity");
 const parking_spot_schedule_entity_1 = require("./entities/parking-spot-schedule.entity");
 const booking_client_service_1 = require("../booking-client/booking-client.service");
+const vehicle_type_1 = require("./vehicle-type");
 exports.MAX_PHOTOS = 10;
 const BASE_COLUMNS = [
     ['spot.id', 'id'],
@@ -29,13 +30,16 @@ const BASE_COLUMNS = [
     ['spot.address', 'address'],
     ['spot.hourlyEnabled', 'hourlyEnabled'],
     ['spot.pricePerHour', 'pricePerHour'],
+    ['spot.pricePerHourByVehicleType', 'pricePerHourByVehicleType'],
     ['spot.stayEnabled', 'stayEnabled'],
     ['spot.pricePerDay', 'pricePerDay'],
     ['spot.pricePerWeek', 'pricePerWeek'],
     ['spot.pricePerMonth', 'pricePerMonth'],
     ['spot.stayAvailableFrom', 'stayAvailableFrom'],
+    ['spot.stayAvailableUntil', 'stayAvailableUntil'],
     ['spot.maxStayDays', 'maxStayDays'],
     ['spot.covered', 'covered'],
+    ['spot.vehicleTypes', 'vehicleTypes'],
     ['spot.instantBooking', 'instantBooking'],
     ['spot.capacity', 'capacity'],
     ['spot.photos', 'photos'],
@@ -54,6 +58,17 @@ function selectBaseColumns(qb) {
 function parseNullableFloat(value) {
     return value === null || value === undefined ? null : parseFloat(value);
 }
+function toPlainDate(value) {
+    if (value === null || value === undefined)
+        return null;
+    if (value instanceof Date) {
+        const y = value.getFullYear();
+        const m = String(value.getMonth() + 1).padStart(2, '0');
+        const d = String(value.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }
+    return String(value).slice(0, 10);
+}
 function toResponse(raw, schedule, distanceMeters) {
     return {
         id: raw.id,
@@ -65,13 +80,16 @@ function toResponse(raw, schedule, distanceMeters) {
         lng: parseFloat(raw.lng),
         hourlyEnabled: raw.hourlyEnabled,
         pricePerHour: parseNullableFloat(raw.pricePerHour),
+        pricePerHourByVehicleType: raw.pricePerHourByVehicleType ?? null,
         stayEnabled: raw.stayEnabled,
         pricePerDay: parseNullableFloat(raw.pricePerDay),
         pricePerWeek: parseNullableFloat(raw.pricePerWeek),
         pricePerMonth: parseNullableFloat(raw.pricePerMonth),
-        stayAvailableFrom: raw.stayAvailableFrom ?? null,
+        stayAvailableFrom: toPlainDate(raw.stayAvailableFrom),
+        stayAvailableUntil: toPlainDate(raw.stayAvailableUntil),
         maxStayDays: raw.maxStayDays === null || raw.maxStayDays === undefined ? null : Number(raw.maxStayDays),
         covered: raw.covered,
+        vehicleTypes: raw.vehicleTypes ?? [vehicle_type_1.VehicleType.CAR],
         instantBooking: raw.instantBooking,
         capacity: Number(raw.capacity ?? 1),
         schedule,
@@ -171,15 +189,26 @@ let ParkingSpotsService = ParkingSpotsService_1 = class ParkingSpotsService {
             });
         }
         if (filters.maxPrice !== undefined) {
-            query.andWhere('spot.pricePerHour <= :maxPrice', {
-                maxPrice: filters.maxPrice,
-            });
+            query.andWhere(`(
+          spot.pricePerHour <= :maxPrice
+          OR EXISTS (
+            SELECT 1 FROM jsonb_each_text(spot.pricePerHourByVehicleType) AS v(vehicle_type, price)
+            WHERE price::numeric <= :maxPrice
+          )
+        )`, { maxPrice: filters.maxPrice });
         }
         if (filters.covered !== undefined) {
             query.andWhere('spot.covered = :covered', { covered: filters.covered });
         }
         if (filters.stayOnly) {
             query.andWhere('spot.stayEnabled = true');
+            query.andWhere('(spot.stayAvailableUntil IS NULL OR spot.stayAvailableUntil >= CURRENT_DATE)');
+        }
+        if (filters.hourlyOnly) {
+            query.andWhere('spot.hourlyEnabled = true');
+        }
+        if (filters.instantBooking) {
+            query.andWhere('spot.instantBooking = true');
         }
         const raw = await query.getRawMany();
         const schedules = await this.scheduleForMany(raw.map((row) => row.id));
@@ -211,6 +240,20 @@ let ParkingSpotsService = ParkingSpotsService_1 = class ParkingSpotsService {
         await this.applyRatings([spot]);
         return spot;
     }
+    async findByIds(ids) {
+        if (ids.length === 0)
+            return [];
+        const raw = await selectBaseColumns(this.parkingSpotRepo.createQueryBuilder('spot'))
+            .addSelect('ST_X(spot.location::geometry)', 'lng')
+            .addSelect('ST_Y(spot.location::geometry)', 'lat')
+            .where('spot.id IN (:...ids)', { ids })
+            .andWhere('spot.status IN (:...statuses)', { statuses: [parking_spot_entity_1.ParkingSpotStatus.ACTIVE, parking_spot_entity_1.ParkingSpotStatus.PAUSED] })
+            .getRawMany();
+        const schedules = await this.scheduleForMany(raw.map((row) => row.id));
+        const spots = raw.map((row) => toResponse(row, schedules.get(row.id) ?? []));
+        await this.applyRatings(spots);
+        return spots;
+    }
     async create(dto, ownerId) {
         if (dto.hourlyEnabled === false && !dto.stayEnabled) {
             throw new common_1.BadRequestException('La cochera tiene que ofrecer alquiler por hora, por estadía, o ambos.');
@@ -222,14 +265,17 @@ let ParkingSpotsService = ParkingSpotsService_1 = class ParkingSpotsService {
             description: dto.description,
             address: dto.address,
             hourlyEnabled: dto.hourlyEnabled ?? true,
-            pricePerHour: dto.hourlyEnabled === false ? null : dto.pricePerHour,
+            pricePerHour: dto.hourlyEnabled === false || dto.pricePerHourByVehicleType ? null : dto.pricePerHour,
+            pricePerHourByVehicleType: dto.hourlyEnabled === false ? null : (dto.pricePerHourByVehicleType ?? null),
             stayEnabled: dto.stayEnabled ?? false,
             pricePerDay: dto.stayEnabled ? dto.pricePerDay : null,
             pricePerWeek: dto.stayEnabled ? dto.pricePerWeek : null,
             pricePerMonth: dto.stayEnabled ? dto.pricePerMonth : null,
             maxStayDays: dto.stayEnabled ? dto.maxStayDays : null,
             stayAvailableFrom: dto.stayEnabled ? (dto.stayAvailableFrom ?? null) : null,
+            stayAvailableUntil: dto.stayEnabled ? (dto.stayAvailableUntil ?? null) : null,
             covered: dto.covered ?? false,
+            vehicleTypes: dto.vehicleTypes,
             instantBooking: dto.instantBooking ?? true,
             capacity: dto.capacity ?? 1,
             rules: dto.rules ?? [],
@@ -240,6 +286,10 @@ let ParkingSpotsService = ParkingSpotsService_1 = class ParkingSpotsService {
             },
             schedule: dto.hourlyEnabled === false ? [] : (dto.schedule ?? []).map((entry) => this.scheduleRepo.create(entry)),
         });
+        if (spot.hourlyEnabled)
+            this.validateHourlyCoherence(spot);
+        if (spot.stayEnabled)
+            this.validateStayCoherence(spot);
         const saved = await this.parkingSpotRepo.save(spot);
         return this.findById(saved.id);
     }
@@ -251,10 +301,17 @@ let ParkingSpotsService = ParkingSpotsService_1 = class ParkingSpotsService {
             spot.hourlyEnabled = dto.hourlyEnabled;
         if (dto.pricePerHour !== undefined)
             spot.pricePerHour = dto.pricePerHour;
+        if (dto.pricePerHourByVehicleType !== undefined) {
+            spot.pricePerHourByVehicleType = dto.pricePerHourByVehicleType;
+            if (dto.pricePerHourByVehicleType)
+                spot.pricePerHour = null;
+        }
         if (dto.description !== undefined)
             spot.description = dto.description;
         if (dto.covered !== undefined)
             spot.covered = dto.covered;
+        if (dto.vehicleTypes !== undefined)
+            spot.vehicleTypes = dto.vehicleTypes;
         if (dto.instantBooking !== undefined)
             spot.instantBooking = dto.instantBooking;
         if (dto.capacity !== undefined)
@@ -271,6 +328,8 @@ let ParkingSpotsService = ParkingSpotsService_1 = class ParkingSpotsService {
             spot.maxStayDays = dto.maxStayDays;
         if (dto.stayAvailableFrom !== undefined)
             spot.stayAvailableFrom = dto.stayAvailableFrom;
+        if (dto.stayAvailableUntil !== undefined)
+            spot.stayAvailableUntil = dto.stayAvailableUntil;
         if (!spot.hourlyEnabled && !spot.stayEnabled) {
             throw new common_1.BadRequestException('La cochera tiene que ofrecer alquiler por hora, por estadía, o ambos.');
         }
@@ -310,10 +369,30 @@ let ParkingSpotsService = ParkingSpotsService_1 = class ParkingSpotsService {
             spot.maxStayDays === null) {
             throw new common_1.BadRequestException('Para habilitar la estadía hay que cargar pricePerDay, pricePerWeek, pricePerMonth y maxStayDays.');
         }
+        if (spot.stayAvailableFrom !== null &&
+            spot.stayAvailableUntil !== null &&
+            spot.stayAvailableUntil < spot.stayAvailableFrom) {
+            throw new common_1.BadRequestException('stayAvailableUntil no puede ser anterior a stayAvailableFrom.');
+        }
     }
     validateHourlyCoherence(spot) {
+        if (spot.pricePerHourByVehicleType) {
+            const byVehicle = spot.pricePerHourByVehicleType;
+            for (const key of Object.keys(byVehicle)) {
+                if (!vehicle_type_1.VEHICLE_TYPES.includes(key)) {
+                    throw new common_1.BadRequestException(`Tipo de vehículo inválido en pricePerHourByVehicleType: ${key}`);
+                }
+            }
+            for (const vehicleType of spot.vehicleTypes ?? []) {
+                const price = byVehicle[vehicleType];
+                if (typeof price !== 'number' || !(price > 0)) {
+                    throw new common_1.BadRequestException(`Falta cargar pricePerHourByVehicleType.${vehicleType} (o no es un número positivo).`);
+                }
+            }
+            return;
+        }
         if (spot.pricePerHour === null) {
-            throw new common_1.BadRequestException('Para habilitar el alquiler por hora hay que cargar pricePerHour.');
+            throw new common_1.BadRequestException('Para habilitar el alquiler por hora hay que cargar pricePerHour, o un precio por tipo de vehículo.');
         }
     }
     async getOwnedSpot(id, ownerId) {

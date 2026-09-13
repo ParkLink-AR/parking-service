@@ -5,6 +5,7 @@ import { UpdateParkingSpotDto } from './dto/update-parking-spot.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
 import { DeletePhotoDto } from './dto/delete-photo.dto';
 import { ReorderPhotosDto } from './dto/reorder-photos.dto';
+import { ParkingSpotsBatchQueryDto } from './dto/parking-spots-batch-query.dto';
 import { AvailabilityService } from '../availability/availability.service';
 import { AvailabilityQueryDto } from '../availability/dto/availability-query.dto';
 import { StorageService } from '../storage/storage.service';
@@ -15,6 +16,7 @@ export declare class ParkingSpotsController {
     constructor(parkingSpotsService: ParkingSpotsService, availabilityService: AvailabilityService, storageService: StorageService);
     private requireUserId;
     search(filters: SearchParkingSpotDto): Promise<import("./parking-spots.service").ParkingSpotResponse[]>;
+    findByIds(query: ParkingSpotsBatchQueryDto): Promise<import("./parking-spots.service").ParkingSpotResponse[]>;
     findById(id: string): Promise<import("./parking-spots.service").ParkingSpotResponse>;
     getAvailability(id: string, query: AvailabilityQueryDto): Promise<{
         days: import("../availability/availability.service").DayAvailabilityResponse[];
