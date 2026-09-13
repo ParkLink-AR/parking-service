@@ -375,6 +375,29 @@ export class ParkingSpotsService {
   }
 
   /**
+   * Detalle de varias cocheras de una sola vez -- usado por el mobile para
+   * resolver los títulos de todas las cocheras de un historial de reservas
+   * en un solo request en vez de uno por cochera. Mismo filtro de status que
+   * findById (ACTIVE/PAUSED) para que el comportamiento de "no encontrada"
+   * sea idéntico: acá simplemente esa cochera no aparece en el array.
+   */
+  async findByIds(ids: string[]): Promise<ParkingSpotResponse[]> {
+    if (ids.length === 0) return [];
+
+    const raw = await selectBaseColumns(this.parkingSpotRepo.createQueryBuilder('spot'))
+      .addSelect('ST_X(spot.location::geometry)', 'lng')
+      .addSelect('ST_Y(spot.location::geometry)', 'lat')
+      .where('spot.id IN (:...ids)', { ids })
+      .andWhere('spot.status IN (:...statuses)', { statuses: [ParkingSpotStatus.ACTIVE, ParkingSpotStatus.PAUSED] })
+      .getRawMany();
+
+    const schedules = await this.scheduleForMany(raw.map((row) => row.id));
+    const spots = raw.map((row) => toResponse(row, schedules.get(row.id) ?? []));
+    await this.applyRatings(spots);
+    return spots;
+  }
+
+  /**
    * Crea una cochera en las coordenadas provistas -- el mobile ya las
    * resolvió antes de mandar esto (eligiendo una entre varias vía
    * GET /geocode si el dueño tipeó una dirección, o el GPS del dispositivo
