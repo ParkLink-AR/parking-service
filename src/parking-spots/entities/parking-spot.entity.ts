@@ -122,13 +122,6 @@ export class ParkingSpot {
   @Column({ name: 'vehicle_types', type: 'jsonb', nullable: true })
   vehicleTypes!: VehicleType[] | null;
 
-  // Si es false, una reserva pagada no pasa a CONFIRMED sola -- queda
-  // PENDING_OWNER_APPROVAL hasta que el dueño la apruebe o la rechace (ver
-  // booking-service's ConfirmBookingUseCase). Default true para no cambiar
-  // el comportamiento de las cocheras que ya existen.
-  @Column({ name: 'instant_booking', default: true })
-  instantBooking!: boolean;
-
   // Cuántos lugares idénticos alquila esta cochera contra el mismo id (caso
   // "playa de estacionamiento"). capacity=1 es una cochera común. Hasta
   // `capacity` reservas activas pueden solaparse en la misma franja --

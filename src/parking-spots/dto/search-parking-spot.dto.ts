@@ -54,13 +54,6 @@ export class SearchParkingSpotDto {
   @IsBoolean()
   hourlyOnly?: boolean;
 
-  // Sólo cocheras con confirmación automática (ParkingSpot.instantBooking) --
-  // para el conductor que no quiere esperar a que el dueño apruebe.
-  @IsOptional()
-  @Transform(({ value }) => value === 'true' || value === true)
-  @IsBoolean()
-  instantBooking?: boolean;
-
   // Ventana horaria deseada (ISO 8601 con offset, ej. "2026-08-24T08:00:00-03:00").
   // Van juntos: si viene uno tiene que venir el otro (mismo criterio que
   // address/lat/lng en UpdateParkingSpotDto). ParkingSpotsService.search()

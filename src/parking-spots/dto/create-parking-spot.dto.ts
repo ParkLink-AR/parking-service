@@ -91,10 +91,6 @@ export class CreateParkingSpotDto {
   capacity?: number;
 
   @IsOptional()
-  @IsBoolean()
-  instantBooking?: boolean;
-
-  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => ScheduleEntryDto)
