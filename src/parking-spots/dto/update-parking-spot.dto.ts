@@ -57,10 +57,6 @@ export class UpdateParkingSpotDto {
   @IsIn(VEHICLE_TYPES, { each: true })
   vehicleTypes?: VehicleType[];
 
-  @IsOptional()
-  @IsBoolean()
-  instantBooking?: boolean;
-
   // Se puede subir o bajar sin restricción. Bajarla por debajo de las
   // reservas activas no las cancela; sólo impide crear nuevas hasta que se
   // libere lugar.

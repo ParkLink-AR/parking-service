@@ -49,7 +49,6 @@ export interface ParkingSpotResponse {
   maxStayDays: number | null;
   covered: boolean;
   vehicleTypes: VehicleType[];
-  instantBooking: boolean;
   // Lugares idénticos que se alquilan contra este mismo id (playa). 1 = cochera común.
   capacity: number;
   schedule: ScheduleEntryResponse[];
@@ -87,7 +86,6 @@ const BASE_COLUMNS: Array<[string, string]> = [
   ['spot.maxStayDays', 'maxStayDays'],
   ['spot.covered', 'covered'],
   ['spot.vehicleTypes', 'vehicleTypes'],
-  ['spot.instantBooking', 'instantBooking'],
   ['spot.capacity', 'capacity'],
   ['spot.photos', 'photos'],
   ['spot.rules', 'rules'],
@@ -160,7 +158,6 @@ function toResponse(
     // Filas anteriores a este campo quedan null -- toda cochera era
     // implícitamente para autos antes de que existiera esta selección.
     vehicleTypes: raw.vehicleTypes ?? [VehicleType.CAR],
-    instantBooking: raw.instantBooking,
     capacity: Number(raw.capacity ?? 1),
     schedule,
     photos: raw.photos ?? [],
@@ -322,10 +319,6 @@ export class ParkingSpotsService {
       query.andWhere('spot.hourlyEnabled = true');
     }
 
-    if (filters.instantBooking) {
-      query.andWhere('spot.instantBooking = true');
-    }
-
     const raw = await query.getRawMany();
     const schedules = await this.scheduleForMany(raw.map((row) => row.id));
     const spots = raw.map((row) => toResponse(row, schedules.get(row.id) ?? [], parseFloat(row.distanceM)));
@@ -425,7 +418,6 @@ export class ParkingSpotsService {
       stayAvailableUntil: dto.stayEnabled ? (dto.stayAvailableUntil ?? null) : null,
       covered: dto.covered ?? false,
       vehicleTypes: dto.vehicleTypes,
-      instantBooking: dto.instantBooking ?? true,
       capacity: dto.capacity ?? 1,
       rules: dto.rules ?? [],
       ownerId,
@@ -470,7 +462,6 @@ export class ParkingSpotsService {
     if (dto.description !== undefined) spot.description = dto.description;
     if (dto.covered !== undefined) spot.covered = dto.covered;
     if (dto.vehicleTypes !== undefined) spot.vehicleTypes = dto.vehicleTypes;
-    if (dto.instantBooking !== undefined) spot.instantBooking = dto.instantBooking;
     if (dto.capacity !== undefined) spot.capacity = dto.capacity;
 
     if (dto.stayEnabled !== undefined) spot.stayEnabled = dto.stayEnabled;
