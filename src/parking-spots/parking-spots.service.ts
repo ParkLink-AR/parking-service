@@ -8,6 +8,7 @@ import { CreateParkingSpotDto } from './dto/create-parking-spot.dto';
 import { UpdateParkingSpotDto } from './dto/update-parking-spot.dto';
 import { ScheduleEntryDto } from './dto/schedule-entry.dto';
 import { BookingClientService } from '../booking-client/booking-client.service';
+import { AuthClientService } from '../auth-client/auth-client.service';
 import { VehicleType, VEHICLE_TYPES } from './vehicle-type';
 
 export interface ScheduleEntryResponse {
@@ -222,6 +223,7 @@ export class ParkingSpotsService {
     @InjectRepository(ParkingSpotSchedule)
     private readonly scheduleRepo: Repository<ParkingSpotSchedule>,
     private readonly bookingClient: BookingClientService,
+    private readonly authClient: AuthClientService,
   ) {}
 
   private async scheduleFor(parkingSpotId: string): Promise<ScheduleEntryResponse[]> {
@@ -397,6 +399,9 @@ export class ParkingSpotsService {
    * si usó su ubicación actual), así que create() no vuelve a geocodificar.
    */
   async create(dto: CreateParkingSpotDto, ownerId: string): Promise<ParkingSpotResponse> {
+    if (!(await this.authClient.hasPayoutInfo(ownerId))) {
+      throw new BadRequestException('PAYOUT_INFO_REQUIRED');
+    }
     if (dto.hourlyEnabled === false && !dto.stayEnabled) {
       throw new BadRequestException('La cochera tiene que ofrecer alquiler por hora, por estadía, o ambos.');
     }
