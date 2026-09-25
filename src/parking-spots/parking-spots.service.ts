@@ -676,17 +676,19 @@ export class ParkingSpotsService {
     return spots.flatMap((spot) => spot.photos ?? []);
   }
 
-  async findAllByOwner(ownerId: string): Promise<ParkingSpotResponse[]> {
-    // ACTIVE y PAUSED, no DELETED -- el dueño tiene que ver sus cocheras
-    // pausadas acá para poder reactivarlas, pero una borrada ya no existe
-    // para él tampoco.
-    const raw = await selectBaseColumns(this.parkingSpotRepo.createQueryBuilder('spot'))
+  // includeDeleted is for the admin panel only (customer support needs to see the full
+  // history of a user's spots, deleted ones included, marked as such) -- the owner's own
+  // app never passes it: ACTIVE y PAUSED, no DELETED -- el dueño tiene que ver sus cocheras
+  // pausadas acá para poder reactivarlas, pero una borrada ya no existe para él tampoco.
+  async findAllByOwner(ownerId: string, includeDeleted = false): Promise<ParkingSpotResponse[]> {
+    const query = selectBaseColumns(this.parkingSpotRepo.createQueryBuilder('spot'))
       .addSelect('ST_X(spot.location::geometry)', 'lng')
       .addSelect('ST_Y(spot.location::geometry)', 'lat')
-      .where('spot.ownerId = :ownerId', { ownerId })
-      .andWhere('spot.status != :deleted', { deleted: ParkingSpotStatus.DELETED })
-      .orderBy('spot.createdAt', 'DESC')
-      .getRawMany();
+      .where('spot.ownerId = :ownerId', { ownerId });
+    if (!includeDeleted) {
+      query.andWhere('spot.status != :deleted', { deleted: ParkingSpotStatus.DELETED });
+    }
+    const raw = await query.orderBy('spot.createdAt', 'DESC').getRawMany();
 
     const schedules = await this.scheduleForMany(raw.map((row) => row.id));
     const spots = raw.map((row) => toResponse(row, schedules.get(row.id) ?? []));
