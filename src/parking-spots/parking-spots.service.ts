@@ -17,6 +17,18 @@ export interface ScheduleEntryResponse {
 }
 
 export const MAX_PHOTOS = 10;
+export const MAX_VERIFICATION_PHOTOS = 5;
+
+// Todo estado salvo DELETED resuelve acá -- lo comparten el detalle público
+// (driver) y la pantalla de administración del dueño (mobile spots/[id].tsx
+// llama a este mismo findById para ambos casos), así que una cochera
+// PENDING_REVIEW o REJECTED tiene que poder verse igual que una PAUSED.
+const VISIBLE_STATUSES = [
+  ParkingSpotStatus.ACTIVE,
+  ParkingSpotStatus.PAUSED,
+  ParkingSpotStatus.PENDING_REVIEW,
+  ParkingSpotStatus.REJECTED,
+];
 
 // The `geography` column doesn't come back usable from a plain find()/findOne()
 // (node-postgres returns raw EWKB for it) -- every read path goes through
@@ -53,6 +65,8 @@ export interface ParkingSpotResponse {
   capacity: number;
   schedule: ScheduleEntryResponse[];
   photos: string[];
+  verificationPhotos: string[];
+  reviewNotes: string | null;
   rules: string[];
   status: ParkingSpotStatus;
   createdAt: Date;
@@ -88,6 +102,8 @@ const BASE_COLUMNS: Array<[string, string]> = [
   ['spot.vehicleTypes', 'vehicleTypes'],
   ['spot.capacity', 'capacity'],
   ['spot.photos', 'photos'],
+  ['spot.verificationPhotos', 'verificationPhotos'],
+  ['spot.reviewNotes', 'reviewNotes'],
   ['spot.rules', 'rules'],
   ['spot.status', 'status'],
   ['spot.createdAt', 'createdAt'],
@@ -161,6 +177,8 @@ function toResponse(
     capacity: Number(raw.capacity ?? 1),
     schedule,
     photos: raw.photos ?? [],
+    verificationPhotos: raw.verificationPhotos ?? [],
+    reviewNotes: raw.reviewNotes ?? null,
     rules: raw.rules ?? [],
     status: raw.status,
     createdAt: raw.createdAt,
@@ -355,7 +373,7 @@ export class ParkingSpotsService {
       .addSelect('ST_X(spot.location::geometry)', 'lng')
       .addSelect('ST_Y(spot.location::geometry)', 'lat')
       .where('spot.id = :id', { id })
-      .andWhere('spot.status IN (:...statuses)', { statuses: [ParkingSpotStatus.ACTIVE, ParkingSpotStatus.PAUSED] })
+      .andWhere('spot.status IN (:...statuses)', { statuses: VISIBLE_STATUSES })
       .getRawOne();
 
     if (!raw) {
@@ -381,7 +399,7 @@ export class ParkingSpotsService {
       .addSelect('ST_X(spot.location::geometry)', 'lng')
       .addSelect('ST_Y(spot.location::geometry)', 'lat')
       .where('spot.id IN (:...ids)', { ids })
-      .andWhere('spot.status IN (:...statuses)', { statuses: [ParkingSpotStatus.ACTIVE, ParkingSpotStatus.PAUSED] })
+      .andWhere('spot.status IN (:...statuses)', { statuses: VISIBLE_STATUSES })
       .getRawMany();
 
     const schedules = await this.scheduleForMany(raw.map((row) => row.id));
@@ -421,6 +439,11 @@ export class ParkingSpotsService {
       capacity: dto.capacity ?? 1,
       rules: dto.rules ?? [],
       ownerId,
+      // Toda cochera nueva arranca pendiente de revisión -- pasa a ACTIVE
+      // recién cuando un admin aprueba la documentación (ver
+      // addVerificationPhotos/reviewSpot). No aparece en search() hasta
+      // entonces (search() sólo trae status ACTIVE).
+      status: ParkingSpotStatus.PENDING_REVIEW,
       // GeoJSON format: TypeORM/PostGIS espera { type: 'Point', coordinates: [lng, lat] }
       location: {
         type: 'Point',
@@ -687,5 +710,49 @@ export class ParkingSpotsService {
     const spots = raw.map((row) => toResponse(row, schedules.get(row.id) ?? []));
     await this.applyRatings(spots);
     return spots;
+  }
+
+  // Documentación de respaldo (no las fotos de marketing en `photos`) que un
+  // admin va a revisar antes de aprobar la cochera -- ver
+  // AdminParkingSpotsController.
+  async addVerificationPhotos(id: string, ownerId: string, urls: string[]): Promise<ParkingSpotResponse> {
+    const spot = await this.getOwnedSpot(id, ownerId);
+    const current = spot.verificationPhotos ?? [];
+    if (current.length + urls.length > MAX_VERIFICATION_PHOTOS) {
+      throw new BadRequestException(`Podés subir hasta ${MAX_VERIFICATION_PHOTOS} fotos de documentación.`);
+    }
+    spot.verificationPhotos = [...current, ...urls];
+    await this.parkingSpotRepo.save(spot);
+    return this.findById(id);
+  }
+
+  // Cola de revisión del backoffice -- todas las cocheras que un admin todavía
+  // no aprobó ni rechazó, más antiguas primero (FIFO).
+  async findPendingReview(): Promise<ParkingSpotResponse[]> {
+    const raw = await selectBaseColumns(this.parkingSpotRepo.createQueryBuilder('spot'))
+      .addSelect('ST_X(spot.location::geometry)', 'lng')
+      .addSelect('ST_Y(spot.location::geometry)', 'lat')
+      .where('spot.status = :status', { status: ParkingSpotStatus.PENDING_REVIEW })
+      .orderBy('spot.createdAt', 'ASC')
+      .getRawMany();
+
+    const schedules = await this.scheduleForMany(raw.map((row) => row.id));
+    return raw.map((row) => toResponse(row, schedules.get(row.id) ?? []));
+  }
+
+  // Decisión del admin: aprobar la manda a ACTIVE (recién ahí aparece en
+  // search()), rechazarla la deja en REJECTED con el motivo en reviewNotes.
+  // Sólo se puede revisar una vez -- si ya se decidió, el dueño tiene que
+  // crear la cochera de nuevo en vez de reabrir esta.
+  async reviewSpot(id: string, decision: 'approved' | 'rejected', notes: string | null): Promise<ParkingSpotResponse> {
+    const spot = await this.parkingSpotRepo.findOne({ where: { id } });
+    if (!spot) throw new NotFoundException('Cochera no encontrada');
+    if (spot.status !== ParkingSpotStatus.PENDING_REVIEW) {
+      throw new ConflictException('Esta cochera no está pendiente de revisión.');
+    }
+    spot.status = decision === 'approved' ? ParkingSpotStatus.ACTIVE : ParkingSpotStatus.REJECTED;
+    spot.reviewNotes = notes ?? null;
+    await this.parkingSpotRepo.save(spot);
+    return this.findById(id);
   }
 }
