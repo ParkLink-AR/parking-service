@@ -26,7 +26,9 @@ export class AuthClientService {
 
     try {
       const response = await firstValueFrom(
-        this.httpService.get<PayoutStatusResponse>(`${baseUrl}/internal/users/${ownerId}/payout-status`),
+        this.httpService.get<PayoutStatusResponse>(`${baseUrl}/internal/users/${ownerId}/payout-status`, {
+          headers: { 'X-Internal-Key': this.configService.get<string>('INTERNAL_SERVICE_KEY') ?? '' },
+        }),
       );
       return response.data.has_payout_info;
     } catch {

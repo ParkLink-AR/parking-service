@@ -69,7 +69,7 @@ El servicio queda escuchando en `http://localhost:3001`.
 
 ## Notas importantes
 
-- El `ownerId` en `POST /parking-spots` está hardcodeado (`temp-owner-id`) hasta integrar el JWT real de auth-service. Buscá el `TODO` en `parking-spots.controller.ts`.
+- El `ownerId` de `POST /parking-spots` (y de toda acción sobre una cochera propia) sale del header `x-user-id` que agrega el gateway después de validar el JWT. El servicio solo acepta requests que traigan el secreto del gateway (`GATEWAY_INTERNAL_SECRET`) o la clave entre servicios (`INTERNAL_SERVICE_KEY`) -- ver `src/trusted-caller.middleware.ts`.
 - El orden de coordenadas en PostGIS es `POINT(lng lat)`, **no** `POINT(lat lng)` — es un error clásico, ya está resuelto en `parking-spots.service.ts` pero tenelo en cuenta si tocás esa parte.
 - `synchronize: true` en TypeORM está bien para desarrollo/TFI, pero si en algún momento migran a un entorno más "serio" conviene pasar a migraciones versionadas.
 

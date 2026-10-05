@@ -36,6 +36,12 @@ export class BookingClientService {
     private readonly configService: ConfigService,
   ) {}
 
+  /** Service-to-service auth -- booking-service only accepts calls carrying the shared
+   * INTERNAL_SERVICE_KEY (or the gateway's own secret). */
+  private internalHeaders(): Record<string, string> {
+    return { 'X-Internal-Key': this.configService.get<string>('INTERNAL_SERVICE_KEY') ?? '' };
+  }
+
   /**
    * Fetches the parking spot's active bookings (CONFIRMED, or PENDING_PAYMENT with an
    * unexpired hold) from booking-service, overlapping [from, to). from/to are YYYY-MM-DD,
@@ -49,6 +55,7 @@ export class BookingClientService {
       const response = await firstValueFrom(
         this.httpService.get<ListBookingsResponse>(`${baseUrl}/parking-spots/${parkingSpotId}/bookings`, {
           params: { active: 'true', from, to },
+          headers: this.internalHeaders(),
         }),
       );
       data = response.data;
@@ -79,7 +86,7 @@ export class BookingClientService {
           spots,
           start,
           end,
-        }),
+        }, { headers: this.internalHeaders() }),
       );
       return response.data.bookable_parking_spot_ids;
     } catch {
@@ -102,7 +109,7 @@ export class BookingClientService {
       const response = await firstValueFrom(
         this.httpService.post<SpotRatingsResponse>(`${baseUrl}/parking-spots/ratings`, {
           parking_spot_ids: parkingSpotIds,
-        }),
+        }, { headers: this.internalHeaders() }),
       );
       const ratings: Record<string, SpotRating> = {};
       for (const [spotId, summary] of Object.entries(response.data.ratings)) {
