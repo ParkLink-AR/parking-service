@@ -464,6 +464,7 @@ export class ParkingSpotsService {
       // el mismo o en otro request, si no validateHourlyCoherence lo pide.
       if (dto.pricePerHourByVehicleType) spot.pricePerHour = null;
     }
+    if (dto.title !== undefined) spot.title = dto.title;
     if (dto.description !== undefined) spot.description = dto.description;
     if (dto.covered !== undefined) spot.covered = dto.covered;
     if (dto.vehicleTypes !== undefined) spot.vehicleTypes = dto.vehicleTypes;

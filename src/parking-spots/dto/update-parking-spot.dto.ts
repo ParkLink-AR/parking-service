@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayNotEmpty,
   IsArray,
@@ -8,19 +8,29 @@ import {
   IsISO8601,
   IsLatitude,
   IsLongitude,
+  IsNotEmpty,
   IsNumber,
   IsObject,
   IsOptional,
   IsString,
   Matches,
   Max,
+  MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
 import { ScheduleEntryDto } from './schedule-entry.dto';
+import { normalizeSpotTitle, SPOT_TITLE_MAX_LENGTH } from '../spot-title';
 import { VehicleType, VEHICLE_TYPES } from '../vehicle-type';
 
 export class UpdateParkingSpotDto {
+  @IsOptional()
+  @Transform(normalizeSpotTitle)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(SPOT_TITLE_MAX_LENGTH)
+  title?: string;
+
   @IsOptional()
   @IsString()
   description?: string;
