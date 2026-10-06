@@ -8,6 +8,7 @@ import { CreateParkingSpotDto } from './dto/create-parking-spot.dto';
 import { UpdateParkingSpotDto } from './dto/update-parking-spot.dto';
 import { ScheduleEntryDto } from './dto/schedule-entry.dto';
 import { BookingClientService } from '../booking-client/booking-client.service';
+import { AuthClientService } from '../auth-client/auth-client.service';
 import { VehicleType, VEHICLE_TYPES } from './vehicle-type';
 
 export interface ScheduleEntryResponse {
@@ -240,6 +241,7 @@ export class ParkingSpotsService {
     @InjectRepository(ParkingSpotSchedule)
     private readonly scheduleRepo: Repository<ParkingSpotSchedule>,
     private readonly bookingClient: BookingClientService,
+    private readonly authClient: AuthClientService,
   ) {}
 
   private async scheduleFor(parkingSpotId: string): Promise<ScheduleEntryResponse[]> {
@@ -415,6 +417,9 @@ export class ParkingSpotsService {
    * si usó su ubicación actual), así que create() no vuelve a geocodificar.
    */
   async create(dto: CreateParkingSpotDto, ownerId: string): Promise<ParkingSpotResponse> {
+    if (!(await this.authClient.hasPayoutInfo(ownerId))) {
+      throw new BadRequestException('PAYOUT_INFO_REQUIRED');
+    }
     if (dto.hourlyEnabled === false && !dto.stayEnabled) {
       throw new BadRequestException('La cochera tiene que ofrecer alquiler por hora, por estadía, o ambos.');
     }
@@ -694,17 +699,19 @@ export class ParkingSpotsService {
     return spots.flatMap((spot) => spot.photos ?? []);
   }
 
-  async findAllByOwner(ownerId: string): Promise<ParkingSpotResponse[]> {
-    // ACTIVE y PAUSED, no DELETED -- el dueño tiene que ver sus cocheras
-    // pausadas acá para poder reactivarlas, pero una borrada ya no existe
-    // para él tampoco.
-    const raw = await selectBaseColumns(this.parkingSpotRepo.createQueryBuilder('spot'))
+  // includeDeleted is for the admin panel only (customer support needs to see the full
+  // history of a user's spots, deleted ones included, marked as such) -- the owner's own
+  // app never passes it: ACTIVE y PAUSED, no DELETED -- el dueño tiene que ver sus cocheras
+  // pausadas acá para poder reactivarlas, pero una borrada ya no existe para él tampoco.
+  async findAllByOwner(ownerId: string, includeDeleted = false): Promise<ParkingSpotResponse[]> {
+    const query = selectBaseColumns(this.parkingSpotRepo.createQueryBuilder('spot'))
       .addSelect('ST_X(spot.location::geometry)', 'lng')
       .addSelect('ST_Y(spot.location::geometry)', 'lat')
-      .where('spot.ownerId = :ownerId', { ownerId })
-      .andWhere('spot.status != :deleted', { deleted: ParkingSpotStatus.DELETED })
-      .orderBy('spot.createdAt', 'DESC')
-      .getRawMany();
+      .where('spot.ownerId = :ownerId', { ownerId });
+    if (!includeDeleted) {
+      query.andWhere('spot.status != :deleted', { deleted: ParkingSpotStatus.DELETED });
+    }
+    const raw = await query.orderBy('spot.createdAt', 'DESC').getRawMany();
 
     const schedules = await this.scheduleForMany(raw.map((row) => row.id));
     const spots = raw.map((row) => toResponse(row, schedules.get(row.id) ?? []));

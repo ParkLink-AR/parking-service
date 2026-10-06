@@ -104,8 +104,8 @@ export class ParkingSpotsController {
   }
 
   @Get('users/:id/parking-spots')
-  findAllByOwner(@Param('id') id: string) {
-    return this.parkingSpotsService.findAllByOwner(id);
+  findAllByOwner(@Param('id') id: string, @Query('includeDeleted') includeDeleted?: string) {
+    return this.parkingSpotsService.findAllByOwner(id, includeDeleted === 'true');
   }
 
   @Patch('parking-spots/:id/status')
