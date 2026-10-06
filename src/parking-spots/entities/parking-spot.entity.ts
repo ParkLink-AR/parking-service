@@ -11,8 +11,16 @@ import { ParkingSpotSchedule } from './parking-spot-schedule.entity';
 import { VehicleType } from '../vehicle-type';
 
 export enum ParkingSpotStatus {
+  // Cochera recién creada, todavía no aparece en search() -- ver
+  // ParkingSpotsService.create()/search(). Pasa a ACTIVE o REJECTED cuando
+  // un admin la revisa (ver reviewSpot()).
+  PENDING_REVIEW = 'pending_review',
   ACTIVE = 'active',
   PAUSED = 'paused',
+  // Un admin la rechazó en la revisión -- el dueño puede ver por qué en
+  // reviewNotes, pero no hay forma de volver a PENDING_REVIEW desde acá:
+  // tiene que crear la cochera de nuevo.
+  REJECTED = 'rejected',
   DELETED = 'deleted',
 }
 
@@ -141,6 +149,19 @@ export class ParkingSpot {
 
   @Column({ type: 'jsonb', nullable: true })
   photos!: string[];
+
+  // Fotos de respaldo (escritura, contrato de alquiler, expensas, la
+  // cochera misma, etc.) que el dueño sube para que un admin verifique que
+  // la cochera es legítima antes de publicarla -- separadas de `photos` a
+  // propósito, nunca se muestran al conductor (ver AdminParkingSpotsController
+  // más abajo y ParkingSpotsService.addVerificationPhotos/reviewSpot).
+  @Column({ name: 'verification_photos', type: 'jsonb', nullable: true })
+  verificationPhotos!: string[];
+
+  // Motivo que carga el admin al rechazar (ver reviewSpot()) -- null si
+  // nunca se revisó o si se aprobó.
+  @Column({ name: 'review_notes', type: 'text', nullable: true })
+  reviewNotes!: string | null;
 
   @Column({ type: 'jsonb', nullable: true })
   rules!: string[];

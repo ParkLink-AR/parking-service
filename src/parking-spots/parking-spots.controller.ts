@@ -16,13 +16,14 @@ import {
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { randomUUID } from 'node:crypto';
-import { MAX_PHOTOS, ParkingSpotsService } from './parking-spots.service';
+import { MAX_PHOTOS, MAX_VERIFICATION_PHOTOS, ParkingSpotsService } from './parking-spots.service';
 import { SearchParkingSpotDto } from './dto/search-parking-spot.dto';
 import { CreateParkingSpotDto } from './dto/create-parking-spot.dto';
 import { UpdateParkingSpotDto } from './dto/update-parking-spot.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
 import { DeletePhotoDto } from './dto/delete-photo.dto';
 import { ReorderPhotosDto } from './dto/reorder-photos.dto';
+import { ReviewParkingSpotDto } from './dto/review-parking-spot.dto';
 import { ParkingSpotsBatchQueryDto } from './dto/parking-spots-batch-query.dto';
 import { AvailabilityService } from '../availability/availability.service';
 import { AvailabilityQueryDto } from '../availability/dto/availability-query.dto';
@@ -150,6 +151,43 @@ export class ParkingSpotsController {
     return this.parkingSpotsService.addPhotos(id, ownerId, urls);
   }
 
+  // Documentación de respaldo para que un admin apruebe la cochera --
+  // separada de /photos (esas son las fotos de marketing que ve el
+  // conductor). Mismo Interceptor/límites que uploadPhotos.
+  @Post('parking-spots/:id/verification-photos')
+  @UseInterceptors(
+    FilesInterceptor('files', MAX_VERIFICATION_PHOTOS, {
+      limits: { fileSize: MAX_PHOTO_SIZE_BYTES },
+      fileFilter: (_req, file, callback) => {
+        if (!ALLOWED_PHOTO_TYPES.has(file.mimetype)) {
+          callback(new BadRequestException('Formato no permitido. Usá JPEG, PNG o WEBP.'), false);
+          return;
+        }
+        callback(null, true);
+      },
+    }),
+  )
+  async uploadVerificationPhotos(
+    @Param('id') id: string,
+    @UploadedFiles() files: Array<Express.Multer.File>,
+    @Headers('x-user-id') userId?: string,
+  ) {
+    const ownerId = this.requireUserId(userId);
+    if (!files || files.length === 0) {
+      throw new BadRequestException('No se recibió ninguna imagen (campo "files").');
+    }
+    const urls = await Promise.all(
+      files.map((file) =>
+        this.storageService.uploadObject(
+          `parking-spots/${id}/verification/${randomUUID()}.${extensionFor(file.mimetype)}`,
+          file.buffer,
+          file.mimetype,
+        ),
+      ),
+    );
+    return this.parkingSpotsService.addVerificationPhotos(id, ownerId, urls);
+  }
+
   @Get('parking-spots/:id/photos')
   async getPhotos(@Param('id') id: string) {
     const spot = await this.parkingSpotsService.findById(id);
@@ -193,5 +231,24 @@ export class ParkingSpotsController {
     const deletedPhotos = await this.parkingSpotsService.removeAllForOwner(ownerId);
     await Promise.all(deletedPhotos.map((url) => this.storageService.deleteObject(url)));
     return { message: 'Cocheras eliminadas.' };
+  }
+
+  // Rutas de backoffice: el gateway sólo las expone con AuthMode.ADMIN (ver
+  // gateway/app/routes.py), así que el trust boundary es el gateway mismo --
+  // igual que /admin/tickets en booking-service, este controller no vuelve
+  // a chequear un rol acá.
+  @Get('admin/parking-spots')
+  findPendingReview() {
+    return this.parkingSpotsService.findPendingReview();
+  }
+
+  @Get('admin/parking-spots/:id')
+  findForReview(@Param('id') id: string) {
+    return this.parkingSpotsService.findById(id);
+  }
+
+  @Patch('admin/parking-spots/:id/review')
+  reviewSpot(@Param('id') id: string, @Body() dto: ReviewParkingSpotDto) {
+    return this.parkingSpotsService.reviewSpot(id, dto.decision, dto.notes ?? null);
   }
 }
