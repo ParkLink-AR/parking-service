@@ -5,6 +5,13 @@ import { firstValueFrom } from 'rxjs';
 
 interface PayoutStatusResponse {
   has_payout_info: boolean;
+  account_status: string;
+}
+
+export interface OwnerStatus {
+  hasPayoutInfo: boolean;
+  // ACTIVE, SUSPENDED, PENDING_DELETION or DELETED (auth-service's UserStatus).
+  accountStatus: string;
 }
 
 @Injectable()
@@ -16,12 +23,13 @@ export class AuthClientService {
 
   /**
    * Whether ownerId has payout info (CBU, account holder name, CUIL) registered in
-   * auth-service. Unlike a cosmetic lookup (e.g. BookingClientService.getRatings), this
-   * gates a hard business rule -- an owner must not be able to publish a spot without
-   * payout info on file -- so it fails *closed*: any network/HTTP error throws instead of
-   * silently returning true or false.
+   * auth-service, and the status of their account. Unlike a cosmetic lookup (e.g.
+   * BookingClientService.getRatings), this gates hard business rules -- an owner must not
+   * be able to publish a spot without payout info on file, nor while their account is
+   * suspended or being deleted -- so it fails *closed*: any network/HTTP error throws
+   * instead of silently returning a guess.
    */
-  async hasPayoutInfo(ownerId: string): Promise<boolean> {
+  async getOwnerStatus(ownerId: string): Promise<OwnerStatus> {
     const baseUrl = this.configService.get<string>('AUTH_SERVICE_URL');
 
     try {
@@ -30,7 +38,7 @@ export class AuthClientService {
           headers: { 'X-Internal-Key': this.configService.get<string>('INTERNAL_SERVICE_KEY') ?? '' },
         }),
       );
-      return response.data.has_payout_info;
+      return { hasPayoutInfo: response.data.has_payout_info, accountStatus: response.data.account_status };
     } catch {
       throw new HttpException('auth-service is unavailable', HttpStatus.BAD_GATEWAY);
     }

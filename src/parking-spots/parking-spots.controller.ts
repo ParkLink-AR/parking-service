@@ -220,17 +220,27 @@ export class ParkingSpotsController {
     return { message: 'Cochera eliminada.' };
   }
 
-  // Internal, service-to-service only -- called directly by auth-service
-  // when an owner closes their account for good (same convention as
-  // BookingClientService's calls to booking-service: no gateway route, no
-  // x-user-id, plain HTTP on the docker network). Never wire this into
-  // gateway/app/routes.py, it would let any logged-in user wipe any other
-  // owner's spots by id.
-  @Delete('users/:ownerId/parking-spots')
-  async removeAllForOwner(@Param('ownerId') ownerId: string) {
-    const deletedPhotos = await this.parkingSpotsService.removeAllForOwner(ownerId);
-    await Promise.all(deletedPhotos.map((url) => this.storageService.deleteObject(url)));
-    return { message: 'Cocheras eliminadas.' };
+  // Internas, service-to-service only -- las llama auth-service directo en la red de
+  // docker al suspender, cerrar o eliminar una cuenta (mismo esquema que las llamadas de
+  // BookingClientService a booking-service: sin ruta en el gateway, sin x-user-id).
+  // Nunca agregarlas a gateway/app/routes.py: cualquier usuario logueado podría pausar o
+  // borrar las cocheras de otro por id.
+  @Post('internal/owners/:ownerId/parking-spots/pause')
+  async pauseAllForOwner(@Param('ownerId', ParseUUIDPipe) ownerId: string) {
+    return { spot_ids: await this.parkingSpotsService.pauseAllForOwner(ownerId) };
+  }
+
+  @Post('internal/owners/:ownerId/parking-spots/restore')
+  async restoreAllForOwner(@Param('ownerId', ParseUUIDPipe) ownerId: string) {
+    await this.parkingSpotsService.restoreAllForOwner(ownerId);
+    return { status: 'ok' };
+  }
+
+  @Post('internal/owners/:ownerId/parking-spots/archive')
+  async archiveAllForOwner(@Param('ownerId', ParseUUIDPipe) ownerId: string) {
+    const photos = await this.parkingSpotsService.archiveAllForOwner(ownerId);
+    await Promise.all(photos.map((url) => this.storageService.deleteObject(url)));
+    return { status: 'ok' };
   }
 
   // Rutas de backoffice: el gateway sólo las expone con AuthMode.ADMIN (ver

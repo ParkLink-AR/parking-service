@@ -173,6 +173,13 @@ export class ParkingSpot {
   })
   status!: ParkingSpotStatus;
 
+  // Puesta en pausa (o retenida, si estaba en revisión) porque la cuenta del dueño está
+  // suspendida o eliminándose -- no por el dueño. Mientras esté en true el dueño no la
+  // puede reactivar, y al reactivarse la cuenta vuelven a ACTIVE exactamente éstas (ver
+  // pauseAllForOwner/restoreAllForOwner en ParkingSpotsService).
+  @Column({ name: 'paused_by_account', type: 'boolean', default: false })
+  pausedByAccount!: boolean;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 

@@ -417,7 +417,11 @@ export class ParkingSpotsService {
    * si usó su ubicación actual), así que create() no vuelve a geocodificar.
    */
   async create(dto: CreateParkingSpotDto, ownerId: string): Promise<ParkingSpotResponse> {
-    if (!(await this.authClient.hasPayoutInfo(ownerId))) {
+    const owner = await this.authClient.getOwnerStatus(ownerId);
+    if (owner.accountStatus !== 'ACTIVE') {
+      throw new ForbiddenException('Tu cuenta no puede publicar cocheras ahora.');
+    }
+    if (!owner.hasPayoutInfo) {
       throw new BadRequestException('PAYOUT_INFO_REQUIRED');
     }
     if (dto.hourlyEnabled === false && !dto.stayEnabled) {
@@ -658,6 +662,9 @@ export class ParkingSpotsService {
   // Reactivar es la misma operación al revés.
   async setStatus(id: string, ownerId: string, status: ParkingSpotStatus.ACTIVE | ParkingSpotStatus.PAUSED): Promise<ParkingSpotResponse> {
     const spot = await this.getOwnedSpot(id, ownerId);
+    if (spot.pausedByAccount) {
+      throw new ForbiddenException('No podés cambiar el estado de la cochera mientras tu cuenta no esté activa.');
+    }
     spot.status = status;
     await this.parkingSpotRepo.save(spot);
     return this.findById(id);
@@ -693,11 +700,55 @@ export class ParkingSpotsService {
   // actually gone, not just marked DELETED; schedules cascade at the DB
   // level (ParkingSpotSchedule's FK has onDelete: 'CASCADE'). Photo URLs are
   // returned so the caller (which owns StorageService) can clean up R2.
-  async removeAllForOwner(ownerId: string): Promise<string[]> {
+  // Internas, las llama auth-service al suspender, cerrar o eliminar una cuenta (ver
+  // app/services/account_lifecycle.py allá). Todas idempotentes.
+
+  // Saca de las búsquedas todas las cocheras del dueño: las ACTIVE pasan a PAUSED y las
+  // que estaban en revisión quedan retenidas (si un admin las aprueba mientras tanto
+  // quedan PAUSED, no ACTIVE). Devuelve los ids de todas sus cocheras no eliminadas, para
+  // que booking-service cancele las reservas que tengan.
+  async pauseAllForOwner(ownerId: string): Promise<string[]> {
     const spots = await this.parkingSpotRepo.find({ where: { ownerId } });
-    if (spots.length === 0) return [];
-    await this.parkingSpotRepo.remove(spots);
-    return spots.flatMap((spot) => spot.photos ?? []);
+    const live = spots.filter((spot) => spot.status !== ParkingSpotStatus.DELETED);
+    const toPause = live.filter(
+      (spot) =>
+        !spot.pausedByAccount &&
+        (spot.status === ParkingSpotStatus.ACTIVE || spot.status === ParkingSpotStatus.PENDING_REVIEW),
+    );
+    for (const spot of toPause) {
+      if (spot.status === ParkingSpotStatus.ACTIVE) spot.status = ParkingSpotStatus.PAUSED;
+      spot.pausedByAccount = true;
+    }
+    if (toPause.length > 0) await this.parkingSpotRepo.save(toPause);
+    return live.map((spot) => spot.id);
+  }
+
+  // Deshace pauseAllForOwner cuando la cuenta vuelve a estar activa: sólo las cocheras que
+  // pausó la cuenta (las que el dueño había pausado él mismo siguen pausadas).
+  async restoreAllForOwner(ownerId: string): Promise<void> {
+    const spots = await this.parkingSpotRepo.find({ where: { ownerId, pausedByAccount: true } });
+    for (const spot of spots) {
+      if (spot.status === ParkingSpotStatus.PAUSED) spot.status = ParkingSpotStatus.ACTIVE;
+      spot.pausedByAccount = false;
+    }
+    if (spots.length > 0) await this.parkingSpotRepo.save(spots);
+  }
+
+  // Último paso de eliminar la cuenta: todas sus cocheras pasan a DELETED (la fila queda
+  // para las reservas que apuntan a ella) sin fotos ni documentación. Devuelve las URLs de
+  // esas fotos para que el controller las borre del storage.
+  async archiveAllForOwner(ownerId: string): Promise<string[]> {
+    const spots = await this.parkingSpotRepo.find({ where: { ownerId } });
+    const asList = (value: unknown): string[] => (Array.isArray(value) ? value : []);
+    const photos = spots.flatMap((spot) => [...asList(spot.photos), ...asList(spot.verificationPhotos)]);
+    for (const spot of spots) {
+      spot.status = ParkingSpotStatus.DELETED;
+      spot.pausedByAccount = false;
+      spot.photos = [];
+      spot.verificationPhotos = [];
+    }
+    if (spots.length > 0) await this.parkingSpotRepo.save(spots);
+    return photos;
   }
 
   // includeDeleted is for the admin panel only (customer support needs to see the full
@@ -758,7 +809,10 @@ export class ParkingSpotsService {
     if (spot.status !== ParkingSpotStatus.PENDING_REVIEW) {
       throw new ConflictException('Esta cochera no está pendiente de revisión.');
     }
-    spot.status = decision === 'approved' ? ParkingSpotStatus.ACTIVE : ParkingSpotStatus.REJECTED;
+    // Aprobada mientras la cuenta del dueño está suspendida o eliminándose: queda pausada
+    // hasta que la cuenta se reactive (restoreAllForOwner la pasa a ACTIVE).
+    const approvedStatus = spot.pausedByAccount ? ParkingSpotStatus.PAUSED : ParkingSpotStatus.ACTIVE;
+    spot.status = decision === 'approved' ? approvedStatus : ParkingSpotStatus.REJECTED;
     spot.reviewNotes = notes ?? null;
     await this.parkingSpotRepo.save(spot);
     return this.findById(id);
