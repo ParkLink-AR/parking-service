@@ -8,7 +8,7 @@ import {
   OneToMany,
 } from 'typeorm';
 import { ParkingSpotSchedule } from './parking-spot-schedule.entity';
-import { VehicleType } from '../vehicle-type';
+import { StayRates, VehicleType } from '../vehicle-type';
 
 export enum ParkingSpotStatus {
   // Cochera recién creada, todavía no aparece en search() -- ver
@@ -118,6 +118,24 @@ export class ParkingSpot {
   // pedir una "estadía" de dos años.
   @Column({ name: 'max_stay_days', type: 'int', nullable: true })
   maxStayDays!: number | null;
+
+  // Alternativa a pricePerDay/Week/Month para cocheras donde la estadía también cuesta
+  // distinto según el vehículo -- null es "las mismas tarifas para todos". Si está
+  // seteado, tiene una entrada {day, week, month} por cada tipo en vehicleTypes, y
+  // pricePerDay/Week/Month guardan la más baja de cada una (el "desde" que muestran las
+  // listas, y lo que sigue exigiendo el CHECK de estadía) -- ver
+  // ParkingSpotsService.validateStayCoherence. La cotización usa la del vehículo del
+  // conductor (StaysService.getQuote).
+  @Column({ name: 'stay_prices_by_vehicle_type', type: 'jsonb', nullable: true })
+  stayPricesByVehicleType!: Partial<Record<VehicleType, StayRates>> | null;
+
+  // "Pedir el vehículo al reservar": el conductor tiene que elegir uno de sus vehículos
+  // guardados (con patente, salvo una bici) para poder reservar, y el dueño la ve en la
+  // reserva. Una cochera que cobra distinto por vehículo lo pide siempre, aunque esto esté
+  // en false -- es como se sabe qué tarifa cobrar (ver booking-service). Default false: las
+  // cocheras existentes no cambian.
+  @Column({ name: 'require_vehicle', default: false })
+  requireVehicle!: boolean;
 
   @Column({ default: false })
   covered!: boolean;

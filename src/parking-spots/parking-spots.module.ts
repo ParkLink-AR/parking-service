@@ -9,6 +9,7 @@ import { AvailabilityModule } from '../availability/availability.module';
 import { BookingClientModule } from '../booking-client/booking-client.module';
 import { AuthClientModule } from '../auth-client/auth-client.module';
 import { StorageModule } from '../storage/storage.module';
+import { EventsModule } from '../events/events.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { StorageModule } from '../storage/storage.module';
     BookingClientModule,
     AuthClientModule,
     StorageModule,
+    EventsModule,
   ],
   controllers: [ParkingSpotsController],
   providers: [ParkingSpotsService],

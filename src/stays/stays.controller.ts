@@ -14,7 +14,7 @@ export class StaysController {
 
   @Get(':id/stays/quote')
   getQuote(@Param('id', ParseUUIDPipe) id: string, @Query() query: StayQuoteQueryDto) {
-    return this.staysService.getQuote(id, query.startDate, query.endDate, query.startHour);
+    return this.staysService.getQuote(id, query.startDate, query.endDate, query.startHour, query.vehicleType);
   }
 
   // Calendario de disponibilidad para elegir fecha de inicio/fin de estadía

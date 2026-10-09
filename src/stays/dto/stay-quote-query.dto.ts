@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
-import { IsISO8601, IsInt, Matches, Max, Min } from 'class-validator';
+import { IsIn, IsISO8601, IsInt, IsOptional, Matches, Max, Min } from 'class-validator';
+import { VehicleType, VEHICLE_TYPES } from '../../parking-spots/vehicle-type';
 
 // El conductor arma la estadía como (fecha de inicio, fecha de fin, hora de
 // check-in) -- ver StaysService.getQuote, que descompone la duración en
@@ -26,4 +27,10 @@ export class StayQuoteQueryDto {
   @Min(0)
   @Max(23)
   startHour!: number;
+
+  // El tipo de vehículo del conductor -- obligatorio sólo si la cochera cobra la estadía
+  // distinto por vehículo (ver ParkingSpot.stayPricesByVehicleType): decide la tarifa.
+  @IsOptional()
+  @IsIn(VEHICLE_TYPES)
+  vehicleType?: VehicleType;
 }

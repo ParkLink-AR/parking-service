@@ -21,7 +21,7 @@ import {
 } from 'class-validator';
 import { ScheduleEntryDto } from './schedule-entry.dto';
 import { normalizeSpotTitle, SPOT_TITLE_MAX_LENGTH } from '../spot-title';
-import { VehicleType, VEHICLE_TYPES } from '../vehicle-type';
+import { StayRates, VehicleType, VEHICLE_TYPES } from '../vehicle-type';
 
 export class UpdateParkingSpotDto {
   @IsOptional()
@@ -130,6 +130,18 @@ export class UpdateParkingSpotDto {
   @IsInt()
   @Min(1)
   maxStayDays?: number;
+
+  // Tarifas de estadía por tipo de vehículo -- ver CreateParkingSpotDto. `null` explícito
+  // vuelve a las mismas tarifas para todos (pricePerDay/Week/Month, que hay que mandar en
+  // el mismo request); omitir el campo deja lo que ya había.
+  @IsOptional()
+  @IsObject()
+  stayPricesByVehicleType?: Partial<Record<VehicleType, StayRates>> | null;
+
+  // "Pedir el vehículo al reservar" -- ver ParkingSpot.requireVehicle.
+  @IsOptional()
+  @IsBoolean()
+  requireVehicle?: boolean;
 
   @IsOptional()
   @IsISO8601({ strict: true })

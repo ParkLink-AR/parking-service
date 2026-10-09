@@ -22,7 +22,7 @@ import {
 } from 'class-validator';
 import { ScheduleEntryDto } from './schedule-entry.dto';
 import { normalizeSpotTitle, SPOT_TITLE_MAX_LENGTH } from '../spot-title';
-import { VehicleType, VEHICLE_TYPES } from '../vehicle-type';
+import { StayRates, VehicleType, VEHICLE_TYPES } from '../vehicle-type';
 
 export class CreateParkingSpotDto {
   // Elegido por el dueño al publicar; se guarda con cada palabra capitalizada.
@@ -119,17 +119,17 @@ export class CreateParkingSpotDto {
   // sale ni hasta cuándo) -- @ValidateIf las salta por completo si
   // stayEnabled es false/omitido, así una cochera común no tiene que mandar
   // ninguno de estos campos.
-  @ValidateIf((dto: CreateParkingSpotDto) => dto.stayEnabled === true)
+  @ValidateIf((dto: CreateParkingSpotDto) => dto.stayEnabled === true && !dto.stayPricesByVehicleType)
   @IsNumber()
   @Min(0.01)
   pricePerDay?: number;
 
-  @ValidateIf((dto: CreateParkingSpotDto) => dto.stayEnabled === true)
+  @ValidateIf((dto: CreateParkingSpotDto) => dto.stayEnabled === true && !dto.stayPricesByVehicleType)
   @IsNumber()
   @Min(0.01)
   pricePerWeek?: number;
 
-  @ValidateIf((dto: CreateParkingSpotDto) => dto.stayEnabled === true)
+  @ValidateIf((dto: CreateParkingSpotDto) => dto.stayEnabled === true && !dto.stayPricesByVehicleType)
   @IsNumber()
   @Min(0.01)
   pricePerMonth?: number;
@@ -138,6 +138,19 @@ export class CreateParkingSpotDto {
   @IsInt()
   @Min(1)
   maxStayDays?: number;
+
+  // Tarifas de estadía distintas según el tipo de vehículo -- alternativa a
+  // pricePerDay/Week/Month (que pasan a ser opcionales si viene esto; el service guarda
+  // ahí la más baja de cada una). Su forma (una entrada {day, week, month} por cada tipo
+  // en vehicleTypes) se valida en el service, igual que pricePerHourByVehicleType.
+  @IsOptional()
+  @IsObject()
+  stayPricesByVehicleType?: Partial<Record<VehicleType, StayRates>>;
+
+  // "Pedir el vehículo al reservar" -- ver ParkingSpot.requireVehicle. Default false.
+  @IsOptional()
+  @IsBoolean()
+  requireVehicle?: boolean;
 
   // Fecha (YYYY-MM-DD) desde la que se acepta el check-in de una estadía. A
   // diferencia de las tarifas y la duración máxima, es opcional aun con

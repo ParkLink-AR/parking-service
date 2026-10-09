@@ -9,7 +9,8 @@ import { UpdateParkingSpotDto } from './dto/update-parking-spot.dto';
 import { ScheduleEntryDto } from './dto/schedule-entry.dto';
 import { BookingClientService } from '../booking-client/booking-client.service';
 import { AuthClientService } from '../auth-client/auth-client.service';
-import { VehicleType, VEHICLE_TYPES } from './vehicle-type';
+import { EventsService } from '../events/events.service';
+import { StayRates, VehicleType, VEHICLE_TYPES } from './vehicle-type';
 
 export interface ScheduleEntryResponse {
   dayOfWeek: number;
@@ -60,6 +61,11 @@ export interface ParkingSpotResponse {
   stayAvailableFrom: string | null;
   stayAvailableUntil: string | null;
   maxStayDays: number | null;
+  // Ver el comentario en la entidad: no-null implica que la estadía se cotiza con la
+  // tarifa del vehículo del conductor, y pricePerDay/Week/Month de arriba son las más bajas.
+  stayPricesByVehicleType: Partial<Record<VehicleType, StayRates>> | null;
+  // "Pedir el vehículo al reservar" -- ver el comentario en la entidad.
+  requireVehicle: boolean;
   covered: boolean;
   vehicleTypes: VehicleType[];
   // Lugares idénticos que se alquilan contra este mismo id (playa). 1 = cochera común.
@@ -99,6 +105,8 @@ const BASE_COLUMNS: Array<[string, string]> = [
   ['spot.stayAvailableFrom', 'stayAvailableFrom'],
   ['spot.stayAvailableUntil', 'stayAvailableUntil'],
   ['spot.maxStayDays', 'maxStayDays'],
+  ['spot.stayPricesByVehicleType', 'stayPricesByVehicleType'],
+  ['spot.requireVehicle', 'requireVehicle'],
   ['spot.covered', 'covered'],
   ['spot.vehicleTypes', 'vehicleTypes'],
   ['spot.capacity', 'capacity'],
@@ -171,6 +179,8 @@ function toResponse(
     stayAvailableFrom: toPlainDate(raw.stayAvailableFrom),
     stayAvailableUntil: toPlainDate(raw.stayAvailableUntil),
     maxStayDays: raw.maxStayDays === null || raw.maxStayDays === undefined ? null : Number(raw.maxStayDays),
+    stayPricesByVehicleType: raw.stayPricesByVehicleType ?? null,
+    requireVehicle: raw.requireVehicle ?? false,
     covered: raw.covered,
     // Filas anteriores a este campo quedan null -- toda cochera era
     // implícitamente para autos antes de que existiera esta selección.
@@ -242,6 +252,7 @@ export class ParkingSpotsService {
     private readonly scheduleRepo: Repository<ParkingSpotSchedule>,
     private readonly bookingClient: BookingClientService,
     private readonly authClient: AuthClientService,
+    private readonly events: EventsService,
   ) {}
 
   private async scheduleFor(parkingSpotId: string): Promise<ScheduleEntryResponse[]> {
@@ -437,12 +448,15 @@ export class ParkingSpotsService {
       pricePerHour: dto.hourlyEnabled === false || dto.pricePerHourByVehicleType ? null : dto.pricePerHour!,
       pricePerHourByVehicleType: dto.hourlyEnabled === false ? null : (dto.pricePerHourByVehicleType ?? null),
       stayEnabled: dto.stayEnabled ?? false,
-      pricePerDay: dto.stayEnabled ? dto.pricePerDay! : null,
-      pricePerWeek: dto.stayEnabled ? dto.pricePerWeek! : null,
-      pricePerMonth: dto.stayEnabled ? dto.pricePerMonth! : null,
+      // Con tarifas por vehículo, validateStayCoherence las completa con la más baja.
+      pricePerDay: dto.stayEnabled ? (dto.pricePerDay ?? null) : null,
+      pricePerWeek: dto.stayEnabled ? (dto.pricePerWeek ?? null) : null,
+      pricePerMonth: dto.stayEnabled ? (dto.pricePerMonth ?? null) : null,
       maxStayDays: dto.stayEnabled ? dto.maxStayDays! : null,
       stayAvailableFrom: dto.stayEnabled ? (dto.stayAvailableFrom ?? null) : null,
       stayAvailableUntil: dto.stayEnabled ? (dto.stayAvailableUntil ?? null) : null,
+      stayPricesByVehicleType: dto.stayEnabled ? (dto.stayPricesByVehicleType ?? null) : null,
+      requireVehicle: dto.requireVehicle ?? false,
       covered: dto.covered ?? false,
       vehicleTypes: dto.vehicleTypes,
       capacity: dto.capacity ?? 1,
@@ -504,6 +518,8 @@ export class ParkingSpotsService {
     if (dto.maxStayDays !== undefined) spot.maxStayDays = dto.maxStayDays;
     if (dto.stayAvailableFrom !== undefined) spot.stayAvailableFrom = dto.stayAvailableFrom;
     if (dto.stayAvailableUntil !== undefined) spot.stayAvailableUntil = dto.stayAvailableUntil;
+    if (dto.stayPricesByVehicleType !== undefined) spot.stayPricesByVehicleType = dto.stayPricesByVehicleType;
+    if (dto.requireVehicle !== undefined) spot.requireVehicle = dto.requireVehicle;
     // A diferencia de create() (donde el DTO ya exige las 4 juntas vía
     // @ValidateIf), acá cada campo llega independiente en un PATCH parcial --
     // se valida contra el estado final ya mergeado, no contra lo que vino en
@@ -562,6 +578,32 @@ export class ParkingSpotsService {
   // de la misma regla que el CHECK chk_parking_spots_stay_fields agrega en
   // la DB -- ver SchemaBootstrapService.
   private validateStayCoherence(spot: ParkingSpot): void {
+    if (spot.stayPricesByVehicleType) {
+      const byVehicle = spot.stayPricesByVehicleType;
+      for (const key of Object.keys(byVehicle)) {
+        if (!VEHICLE_TYPES.includes(key as VehicleType)) {
+          throw new BadRequestException(`Tipo de vehículo inválido en stayPricesByVehicleType: ${key}`);
+        }
+      }
+      const accepted = spot.vehicleTypes ?? [VehicleType.CAR];
+      // Sólo los tipos que la cochera acepta -- uno que se dejó de aceptar no cuenta.
+      const rates: StayRates[] = [];
+      for (const vehicleType of accepted) {
+        const rate = byVehicle[vehicleType];
+        const valid = rate && [rate.day, rate.week, rate.month].every((price) => typeof price === 'number' && price > 0);
+        if (!valid) {
+          throw new BadRequestException(
+            `Falta cargar stayPricesByVehicleType.${vehicleType} (day, week y month, números positivos).`,
+          );
+        }
+        rates.push(rate);
+      }
+      // Las tarifas "para todos" pasan a ser las más bajas: el "desde" de las listas, y lo
+      // que sigue exigiendo el CHECK de estadía de la DB.
+      spot.pricePerDay = Math.min(...rates.map((rate) => rate.day));
+      spot.pricePerWeek = Math.min(...rates.map((rate) => rate.week));
+      spot.pricePerMonth = Math.min(...rates.map((rate) => rate.month));
+    }
     if (
       spot.pricePerDay === null ||
       spot.pricePerWeek === null ||
@@ -815,6 +857,15 @@ export class ParkingSpotsService {
     spot.status = decision === 'approved' ? approvedStatus : ParkingSpotStatus.REJECTED;
     spot.reviewNotes = notes ?? null;
     await this.parkingSpotRepo.save(spot);
+    // The owner hears about it either way -- notifications-service turns this into an
+    // inbox entry and a push (approved: it's published; rejected: with the admin's reason).
+    await this.events.publish('parking_spot.reviewed', {
+      parking_spot_id: spot.id,
+      parking_spot_title: spot.title,
+      owner_user_id: spot.ownerId,
+      decision,
+      notes: spot.reviewNotes,
+    });
     return this.findById(id);
   }
 }

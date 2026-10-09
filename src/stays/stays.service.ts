@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ParkingSpot, ParkingSpotStatus } from '../parking-spots/entities/parking-spot.entity';
 import { BookingClientService } from '../booking-client/booking-client.service';
+import { VehicleType } from '../parking-spots/vehicle-type';
 import { addOneDay, buenosAiresDateTime, buenosAiresMidnight, datesInRange, formatBuenosAires } from '../availability/buenos-aires-time';
 import { subtractIntervalsWithCapacity, TimeWindow } from '../availability/interval-math';
 
@@ -84,7 +85,13 @@ export class StaysService {
     private readonly bookingClient: BookingClientService,
   ) {}
 
-  async getQuote(parkingSpotId: string, startDate: string, endDate: string, startHour: number): Promise<StayQuote> {
+  async getQuote(
+    parkingSpotId: string,
+    startDate: string,
+    endDate: string,
+    startHour: number,
+    vehicleType?: VehicleType,
+  ): Promise<StayQuote> {
     const spot = await this.parkingSpotRepo.findOne({
       where: { id: parkingSpotId, status: ParkingSpotStatus.ACTIVE },
     });
@@ -98,7 +105,7 @@ export class StaysService {
       throw new BadRequestException('endDate debe ser posterior a startDate.');
     }
 
-    const rates = this.stayRates(spot);
+    const rates = this.stayRates(spot, vehicleType);
     const totalDays = daysBetweenPlainDates(startDate, endDate);
     const breakdown = decomposeStayDays(totalDays);
     const amount = Math.round(
@@ -239,7 +246,20 @@ export class StaysService {
     return { days };
   }
 
-  private stayRates(spot: ParkingSpot): { day: number; week: number; month: number } {
+  private stayRates(spot: ParkingSpot, vehicleType?: VehicleType): { day: number; week: number; month: number } {
+    // Una cochera que cobra la estadía distinto por vehículo cotiza con la tarifa del
+    // vehículo del conductor -- sin saber cuál es, no hay precio que dar.
+    if (spot.stayPricesByVehicleType) {
+      if (!vehicleType) {
+        throw new BadRequestException('Esta cochera cobra según el vehículo: elegí con qué vehículo vas.');
+      }
+      const accepted = spot.vehicleTypes ?? [VehicleType.CAR];
+      const rate = spot.stayPricesByVehicleType[vehicleType];
+      if (!accepted.includes(vehicleType) || !rate) {
+        throw new BadRequestException('Esta cochera no acepta ese tipo de vehículo.');
+      }
+      return { day: Number(rate.day), week: Number(rate.week), month: Number(rate.month) };
+    }
     // No debería pasar con stayEnabled=true (lo exige el CHECK de la DB),
     // pero el tipo de spot.pricePerX es `number | null` -- failsafe explícito
     // en vez de dejar pasar un NaN silencioso al multiplicar más arriba.
