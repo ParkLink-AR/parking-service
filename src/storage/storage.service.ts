@@ -25,9 +25,17 @@ export class StorageService {
     });
   }
 
+  // Every key is unique (a random UUID), so an object never changes once written: browsers
+  // and the app can keep it cached for a year instead of downloading it again.
   async uploadObject(key: string, body: Buffer, contentType: string): Promise<string> {
     await this.client.send(
-      new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: body, ContentType: contentType }),
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: body,
+        ContentType: contentType,
+        CacheControl: 'public, max-age=31536000, immutable',
+      }),
     );
     return `${this.publicUrl}/${key}`;
   }

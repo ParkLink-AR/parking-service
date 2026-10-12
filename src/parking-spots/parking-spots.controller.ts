@@ -15,6 +15,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
+import { compressImage, SPOT_PHOTO_MAX_DIMENSION, VERIFICATION_PHOTO_MAX_DIMENSION } from '../storage/image-compression';
 import { randomUUID } from 'node:crypto';
 import { MAX_PHOTOS, MAX_VERIFICATION_PHOTOS, ParkingSpotsService } from './parking-spots.service';
 import { SearchParkingSpotDto } from './dto/search-parking-spot.dto';
@@ -30,13 +31,11 @@ import { AvailabilityQueryDto } from '../availability/dto/availability-query.dto
 import { StorageService } from '../storage/storage.service';
 
 const ALLOWED_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
-const MAX_PHOTO_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB, same cap as auth-service's avatar upload
+// What's accepted on the way in -- every photo is then compressed (see compressImage), so
+// this only bounds what an upload can send, not what gets stored.
+const MAX_PHOTO_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 const MAX_BATCH_IDS = 100;
 
-function extensionFor(mimetype: string): string {
-  const subtype = mimetype.split('/')[1];
-  return subtype === 'jpeg' ? 'jpg' : subtype;
-}
 
 @Controller()
 export class ParkingSpotsController {
@@ -140,13 +139,14 @@ export class ParkingSpotsController {
       throw new BadRequestException('No se recibió ninguna imagen (campo "files").');
     }
     const urls = await Promise.all(
-      files.map((file) =>
-        this.storageService.uploadObject(
-          `parking-spots/${id}/${randomUUID()}.${extensionFor(file.mimetype)}`,
-          file.buffer,
-          file.mimetype,
-        ),
-      ),
+      files.map(async (file) => {
+        const image = await compressImage(file.buffer, SPOT_PHOTO_MAX_DIMENSION);
+        return this.storageService.uploadObject(
+          `parking-spots/${id}/${randomUUID()}.${image.extension}`,
+          image.buffer,
+          image.contentType,
+        );
+      }),
     );
     return this.parkingSpotsService.addPhotos(id, ownerId, urls);
   }
@@ -177,13 +177,14 @@ export class ParkingSpotsController {
       throw new BadRequestException('No se recibió ninguna imagen (campo "files").');
     }
     const urls = await Promise.all(
-      files.map((file) =>
-        this.storageService.uploadObject(
-          `parking-spots/${id}/verification/${randomUUID()}.${extensionFor(file.mimetype)}`,
-          file.buffer,
-          file.mimetype,
-        ),
-      ),
+      files.map(async (file) => {
+        const image = await compressImage(file.buffer, VERIFICATION_PHOTO_MAX_DIMENSION);
+        return this.storageService.uploadObject(
+          `parking-spots/${id}/verification/${randomUUID()}.${image.extension}`,
+          image.buffer,
+          image.contentType,
+        );
+      }),
     );
     return this.parkingSpotsService.addVerificationPhotos(id, ownerId, urls);
   }
