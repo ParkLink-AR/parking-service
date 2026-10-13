@@ -158,7 +158,11 @@ export class StaysService {
    * una reserva en el medio.
    */
   private async assertRangeFree(spot: ParkingSpot, startDate: string, endDate: string, start: Date, end: Date): Promise<void> {
-    const activeBookings = await this.bookingClient.getActiveBookings(spot.id, startDate, endDate);
+    // booking-service takes whole days, [from 00:00, to 00:00) -- but the stay runs until the
+    // check-in hour *on* endDate, so that day has to be fetched too: otherwise a booking that
+    // starts on endDate before check-out is missed, the quote says "free", and booking-service
+    // (which checks the exact instants) then refuses the booking.
+    const activeBookings = await this.bookingClient.getActiveBookings(spot.id, startDate, addOneDay(endDate));
     if (!this.isRangeFree(spot, start, end, activeBookings)) {
       throw new ConflictException('Esa cochera ya tiene otra reserva que se superpone con esas fechas.');
     }
