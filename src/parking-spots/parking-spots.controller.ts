@@ -65,12 +65,14 @@ export class ParkingSpotsController {
     if (ids.length > MAX_BATCH_IDS) {
       throw new BadRequestException(`ids must not contain more than ${MAX_BATCH_IDS} entries.`);
     }
-    return this.parkingSpotsService.findByIds(ids);
+    return this.parkingSpotsService.findByIds(ids, { includeDeleted: query.includeDeleted === 'true' });
   }
 
+  // ?includeDeleted=true also resolves a spot its owner deleted (status "deleted") -- a booking's
+  // screens still need to show which spot it was. Only public data, same as any listed spot.
   @Get('parking-spots/:id')
-  findById(@Param('id') id: string) {
-    return this.parkingSpotsService.findById(id);
+  findById(@Param('id') id: string, @Query('includeDeleted') includeDeleted?: string) {
+    return this.parkingSpotsService.findById(id, { includeDeleted: includeDeleted === 'true' });
   }
 
   @Get('parking-spots/:id/availability')

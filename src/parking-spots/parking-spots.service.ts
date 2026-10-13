@@ -11,6 +11,7 @@ import { BookingClientService } from '../booking-client/booking-client.service';
 import { AuthClientService } from '../auth-client/auth-client.service';
 import { EventsService } from '../events/events.service';
 import { StayRates, VehicleType, VEHICLE_TYPES } from './vehicle-type';
+import { buenosAiresToday } from '../availability/buenos-aires-time';
 
 export interface ScheduleEntryResponse {
   dayOfWeek: number;
@@ -31,6 +32,12 @@ const VISIBLE_STATUSES = [
   ParkingSpotStatus.PENDING_REVIEW,
   ParkingSpotStatus.REJECTED,
 ];
+
+// What a spot's detail resolves: the statuses above, plus DELETED for a booking's screens, which
+// still have to say which spot it was (see findById).
+function visibleStatuses(includeDeleted: boolean): ParkingSpotStatus[] {
+  return includeDeleted ? [...VISIBLE_STATUSES, ParkingSpotStatus.DELETED] : VISIBLE_STATUSES;
+}
 
 // The `geography` column doesn't come back usable from a plain find()/findOne()
 // (node-postgres returns raw EWKB for it) -- every read path goes through
@@ -377,7 +384,7 @@ export class ParkingSpotsService {
     }
   }
 
-  async findById(id: string): Promise<ParkingSpotResponse> {
+  async findById(id: string, { includeDeleted = false }: { includeDeleted?: boolean } = {}): Promise<ParkingSpotResponse> {
     // ACTIVE o PAUSED (no DELETED): una cochera pausada deja de aparecer en
     // search(), pero su detalle sigue resolviendo -- lo necesitan las
     // reservas ya hechas y los favoritos de quien la guardó antes de que el
@@ -386,7 +393,7 @@ export class ParkingSpotsService {
       .addSelect('ST_X(spot.location::geometry)', 'lng')
       .addSelect('ST_Y(spot.location::geometry)', 'lat')
       .where('spot.id = :id', { id })
-      .andWhere('spot.status IN (:...statuses)', { statuses: VISIBLE_STATUSES })
+      .andWhere('spot.status IN (:...statuses)', { statuses: visibleStatuses(includeDeleted) })
       .getRawOne();
 
     if (!raw) {
@@ -405,14 +412,14 @@ export class ParkingSpotsService {
    * findById (ACTIVE/PAUSED) para que el comportamiento de "no encontrada"
    * sea idéntico: acá simplemente esa cochera no aparece en el array.
    */
-  async findByIds(ids: string[]): Promise<ParkingSpotResponse[]> {
+  async findByIds(ids: string[], { includeDeleted = false }: { includeDeleted?: boolean } = {}): Promise<ParkingSpotResponse[]> {
     if (ids.length === 0) return [];
 
     const raw = await selectBaseColumns(this.parkingSpotRepo.createQueryBuilder('spot'))
       .addSelect('ST_X(spot.location::geometry)', 'lng')
       .addSelect('ST_Y(spot.location::geometry)', 'lat')
       .where('spot.id IN (:...ids)', { ids })
-      .andWhere('spot.status IN (:...statuses)', { statuses: VISIBLE_STATUSES })
+      .andWhere('spot.status IN (:...statuses)', { statuses: visibleStatuses(includeDeleted) })
       .getRawMany();
 
     const schedules = await this.scheduleForMany(raw.map((row) => row.id));
@@ -722,7 +729,7 @@ export class ParkingSpotsService {
   async remove(id: string, ownerId: string): Promise<string[]> {
     const spot = await this.getOwnedSpot(id, ownerId);
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = buenosAiresToday();
     const farFuture = new Date(Date.now() + 5 * 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const activeBookings = await this.bookingClient.getActiveBookings(id, today, farFuture);
     if (activeBookings.length > 0) {

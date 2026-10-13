@@ -4,7 +4,9 @@ import { Repository } from 'typeorm';
 import { ParkingSpot, ParkingSpotStatus } from '../parking-spots/entities/parking-spot.entity';
 import { BookingClientService } from '../booking-client/booking-client.service';
 import { VehicleType } from '../parking-spots/vehicle-type';
-import { addOneDay, buenosAiresDateTime, buenosAiresMidnight, datesInRange, formatBuenosAires } from '../availability/buenos-aires-time';
+import {
+  addOneDay, buenosAiresDateTime, buenosAiresMidnight, buenosAiresToday, datesInRange, formatBuenosAires,
+} from '../availability/buenos-aires-time';
 import { subtractIntervalsWithCapacity, TimeWindow } from '../availability/interval-math';
 
 // Tope arbitrario para GET .../stays/availability -- a diferencia del
@@ -112,7 +114,7 @@ export class StaysService {
       (breakdown.months * rates.month + breakdown.weeks * rates.week + breakdown.days * rates.day) * 100,
     );
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = buenosAiresToday();
     const availableFrom = spot.stayAvailableFrom ?? today;
     if (startDate < availableFrom) {
       throw new BadRequestException(`Esta cochera acepta estadías a partir del ${availableFrom}.`);
@@ -225,7 +227,7 @@ export class StaysService {
       throw new BadRequestException('Esta cochera no tiene habilitada la opción de estadía.');
     }
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = buenosAiresToday();
     const availableFrom = spot.stayAvailableFrom ?? today;
 
     const activeBookings = await this.bookingClient.getActiveBookings(spot.id, from, to);

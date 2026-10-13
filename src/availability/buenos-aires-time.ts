@@ -23,6 +23,12 @@ export function formatBuenosAires(date: Date): string {
   return shifted.toISOString().slice(0, 19) + '-03:00';
 }
 
+/** Today's calendar date (YYYY-MM-DD) in Buenos Aires -- not UTC's, which is already
+ * tomorrow from 21:00 local time on. */
+export function buenosAiresToday(now: Date = new Date()): string {
+  return new Date(now.getTime() + BUENOS_AIRES_OFFSET_HOURS * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
 /** Advances a YYYY-MM-DD calendar date by one day. */
 export function addOneDay(dateISO: string): string {
   const [year, month, day] = dateISO.split('-').map(Number);
