@@ -8,6 +8,7 @@ import {
   addOneDay, buenosAiresDateTime, buenosAiresMidnight, buenosAiresToday, datesInRange, formatBuenosAires,
 } from '../availability/buenos-aires-time';
 import { subtractIntervalsWithCapacity, TimeWindow } from '../availability/interval-math';
+import { isDateBlocked, overlapsBlockedDates } from '../parking-spots/blocked-dates';
 
 // Tope arbitrario para GET .../stays/availability -- a diferencia del
 // endpoint de disponibilidad por hora (que trae las reservas día por día),
@@ -138,6 +139,9 @@ export class StaysService {
     // último tramo). Ambos límites del rango usan esta misma hora.
     const startDateTime = buenosAiresDateTime(startDate, startHour);
     const endDateTime = buenosAiresDateTime(endDate, startHour);
+    if (overlapsBlockedDates(spot.blockedDates, startDateTime, endDateTime)) {
+      throw new ConflictException('El propietario cerró la cochera algunos de esos días.');
+    }
     await this.assertRangeFree(spot, startDate, endDate, startDateTime, endDateTime);
 
     return {
@@ -245,7 +249,10 @@ export class StaysService {
 
       const dayStart = buenosAiresMidnight(dateISO);
       const dayEnd = buenosAiresMidnight(addOneDay(dateISO));
-      const status = withinWindow && this.isRangeFree(spot, dayStart, dayEnd, activeBookings) ? 'available' : 'unavailable';
+      const status =
+        withinWindow && !isDateBlocked(spot.blockedDates, dateISO) && this.isRangeFree(spot, dayStart, dayEnd, activeBookings)
+          ? 'available'
+          : 'unavailable';
       days.push({ date: dateISO, status });
     }
 

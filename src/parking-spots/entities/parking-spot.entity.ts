@@ -1,3 +1,4 @@
+import { BlockedDateRange } from '../blocked-dates';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -205,6 +206,16 @@ export class ParkingSpot {
 
   @Column({ name: 'moderation_note', type: 'text', nullable: true })
   moderationNote!: string | null;
+
+  // Cómo entrar (código del portón, piso, número de lugar, a quién avisar). Privado: nunca
+  // sale en las respuestas públicas -- sólo lo leen el dueño y, vía booking-service, el
+  // conductor de una reserva confirmada (ver getAccessInstructions).
+  @Column({ name: 'access_instructions', type: 'text', nullable: true })
+  accessInstructions!: string | null;
+
+  // Días completos que el dueño cerró a mano -- ver blocked-dates.ts.
+  @Column({ name: 'blocked_dates', type: 'jsonb', default: () => "'[]'" })
+  blockedDates!: BlockedDateRange[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;

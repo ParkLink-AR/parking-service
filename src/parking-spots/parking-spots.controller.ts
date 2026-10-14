@@ -26,6 +26,7 @@ import { DeletePhotoDto } from './dto/delete-photo.dto';
 import { ReorderPhotosDto } from './dto/reorder-photos.dto';
 import { ReviewParkingSpotDto } from './dto/review-parking-spot.dto';
 import { ModerateParkingSpotDto } from './dto/moderate-parking-spot.dto';
+import { SetBlockedDatesDto } from './dto/set-blocked-dates.dto';
 import { ParkingSpotsBatchQueryDto } from './dto/parking-spots-batch-query.dto';
 import { AvailabilityService } from '../availability/availability.service';
 import { AvailabilityQueryDto } from '../availability/dto/availability-query.dto';
@@ -74,6 +75,27 @@ export class ParkingSpotsController {
   @Get('parking-spots/:id')
   findById(@Param('id') id: string, @Query('includeDeleted') includeDeleted?: string) {
     return this.parkingSpotsService.findById(id, { includeDeleted: includeDeleted === 'true' });
+  }
+
+  // The owner's own access instructions (private), to edit them.
+  @Get('parking-spots/:id/access')
+  getAccessInstructions(@Param('id', ParseUUIDPipe) id: string, @Headers('x-user-id') userId?: string) {
+    return this.parkingSpotsService.getAccessInstructionsForOwner(id, this.requireUserId(userId));
+  }
+
+  // booking-service only (never routed by the gateway): it decides who may see them.
+  @Get('internal/parking-spots/:id/access')
+  getAccessInstructionsInternal(@Param('id', ParseUUIDPipe) id: string) {
+    return this.parkingSpotsService.getAccessInstructions(id);
+  }
+
+  @Put('parking-spots/:id/blocked-dates')
+  setBlockedDates(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetBlockedDatesDto,
+    @Headers('x-user-id') userId?: string,
+  ) {
+    return this.parkingSpotsService.setBlockedDates(id, this.requireUserId(userId), dto.ranges);
   }
 
   @Get('parking-spots/:id/availability')

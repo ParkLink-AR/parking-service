@@ -21,6 +21,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { ScheduleEntryDto } from './schedule-entry.dto';
+import { ACCESS_INSTRUCTIONS_MAX_LENGTH } from './set-blocked-dates.dto';
 import { normalizeSpotTitle, SPOT_TITLE_MAX_LENGTH } from '../spot-title';
 import { StayRates, VehicleType, VEHICLE_TYPES } from '../vehicle-type';
 
@@ -35,6 +36,12 @@ export class CreateParkingSpotDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  // Cómo entrar -- privado, ver ParkingSpot.accessInstructions. "" lo borra.
+  @IsOptional()
+  @IsString()
+  @MaxLength(ACCESS_INSTRUCTIONS_MAX_LENGTH)
+  accessInstructions?: string;
 
   // Etiqueta en texto libre para mostrar -- mobile ya resolvió lat/lng antes
   // de mandar esto (vía GET /geocode si el dueño tipeó una dirección, o el

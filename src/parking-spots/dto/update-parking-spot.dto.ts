@@ -20,6 +20,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { ScheduleEntryDto } from './schedule-entry.dto';
+import { ACCESS_INSTRUCTIONS_MAX_LENGTH } from './set-blocked-dates.dto';
 import { normalizeSpotTitle, SPOT_TITLE_MAX_LENGTH } from '../spot-title';
 import { StayRates, VehicleType, VEHICLE_TYPES } from '../vehicle-type';
 
@@ -34,6 +35,12 @@ export class UpdateParkingSpotDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  // Cómo entrar -- privado, ver ParkingSpot.accessInstructions. "" lo borra.
+  @IsOptional()
+  @IsString()
+  @MaxLength(ACCESS_INSTRUCTIONS_MAX_LENGTH)
+  accessInstructions?: string;
 
   // Alquiler por hora -- ver el comentario en ParkingSpot.hourlyEnabled. Al
   // igual que stayEnabled, acá es un PATCH parcial: la coherencia

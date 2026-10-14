@@ -11,7 +11,8 @@ import { BookingClientService } from '../booking-client/booking-client.service';
 import { AuthClientService } from '../auth-client/auth-client.service';
 import { EventsService } from '../events/events.service';
 import { StayRates, VehicleType, VEHICLE_TYPES } from './vehicle-type';
-import { buenosAiresToday } from '../availability/buenos-aires-time';
+import { addOneDay, buenosAiresToday, formatBuenosAires } from '../availability/buenos-aires-time';
+import { BlockedDateRange, overlapsBlockedDates, upcomingBlockedDates } from './blocked-dates';
 
 export interface ScheduleEntryResponse {
   dayOfWeek: number;
@@ -26,6 +27,18 @@ export const MAX_VERIFICATION_PHOTOS = 5;
 // (driver) y la pantalla de administración del dueño (mobile spots/[id].tsx
 // llama a este mismo findById para ambos casos), así que una cochera
 // PENDING_REVIEW o REJECTED tiene que poder verse igual que una PAUSED.
+const MAX_BLOCKED_RANGE_DAYS = 366;
+
+function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / (24 * 60 * 60 * 1000));
+}
+
+// "14/10" in Buenos Aires time.
+function formatPlainDate(date: Date): string {
+  const [, month, day] = formatBuenosAires(date).slice(0, 10).split('-');
+  return `${day}/${month}`;
+}
+
 const VISIBLE_STATUSES = [
   ParkingSpotStatus.ACTIVE,
   ParkingSpotStatus.PAUSED,
@@ -84,6 +97,8 @@ export interface ParkingSpotResponse {
   // Suspendida por ParkLink (ver moderate()), con el motivo.
   suspendedByAdmin: boolean;
   moderationNote: string | null;
+  // Días que el dueño cerró (sólo los que todavía no pasaron) -- ver blocked-dates.ts.
+  blockedDates: BlockedDateRange[];
   rules: string[];
   status: ParkingSpotStatus;
   createdAt: Date;
@@ -125,6 +140,7 @@ const BASE_COLUMNS: Array<[string, string]> = [
   ['spot.reviewNotes', 'reviewNotes'],
   ['spot.suspendedByAdmin', 'suspendedByAdmin'],
   ['spot.moderationNote', 'moderationNote'],
+  ['spot.blockedDates', 'blockedDates'],
   ['spot.rules', 'rules'],
   ['spot.status', 'status'],
   ['spot.createdAt', 'createdAt'],
@@ -204,6 +220,7 @@ function toResponse(
     reviewNotes: raw.reviewNotes ?? null,
     suspendedByAdmin: raw.suspendedByAdmin === true,
     moderationNote: raw.moderationNote ?? null,
+    blockedDates: upcomingBlockedDates(raw.blockedDates),
     rules: raw.rules ?? [],
     status: raw.status,
     createdAt: raw.createdAt,
@@ -366,12 +383,17 @@ export class ParkingSpotsService {
 
     const raw = await query.getRawMany();
     const schedules = await this.scheduleForMany(raw.map((row) => row.id));
-    const spots = raw.map((row) => toResponse(row, schedules.get(row.id) ?? [], parseFloat(row.distanceM)));
+    let spots = raw.map((row) => toResponse(row, schedules.get(row.id) ?? [], parseFloat(row.distanceM)));
     await this.applyRatings(spots);
 
     if (filters.from === undefined || filters.to === undefined || spots.length === 0) {
       return spots;
     }
+    // Un día que el dueño cerró a mano no aparece como disponible, aunque no tenga reservas.
+    const wantedStart = new Date(filters.from);
+    const wantedEnd = new Date(filters.to);
+    spots = spots.filter((spot) => !overlapsBlockedDates(spot.blockedDates, wantedStart, wantedEnd));
+    if (spots.length === 0) return spots;
 
     try {
       const bookableIDs = new Set(
@@ -457,6 +479,7 @@ export class ParkingSpotsService {
     const spot = this.parkingSpotRepo.create({
       title: dto.title,
       description: dto.description,
+      accessInstructions: dto.accessInstructions?.trim() || null,
       address: dto.address,
       hourlyEnabled: dto.hourlyEnabled ?? true,
       pricePerHour: dto.hourlyEnabled === false || dto.pricePerHourByVehicleType ? null : dto.pricePerHour!,
@@ -521,6 +544,7 @@ export class ParkingSpotsService {
     }
     if (dto.title !== undefined) spot.title = dto.title;
     if (dto.description !== undefined) spot.description = dto.description;
+    if (dto.accessInstructions !== undefined) spot.accessInstructions = dto.accessInstructions.trim() || null;
     if (dto.covered !== undefined) spot.covered = dto.covered;
     if (dto.vehicleTypes !== undefined) spot.vehicleTypes = dto.vehicleTypes;
     if (dto.capacity !== undefined) spot.capacity = dto.capacity;
@@ -931,6 +955,51 @@ export class ParkingSpotsService {
   // Suspender una cochera publicada (denuncia, problema) o restaurarla. Suspendida queda
   // PAUSED y el dueño no la puede reactivar; al restaurarla vuelve a ACTIVE (o PAUSED, si la
   // cuenta del dueño no está activa). El dueño se entera en los dos casos.
+  /** The owner reading their own spot's access instructions (to edit them). */
+  async getAccessInstructionsForOwner(id: string, ownerId: string): Promise<{ accessInstructions: string | null }> {
+    const spot = await this.getOwnedSpot(id, ownerId);
+    return { accessInstructions: spot.accessInstructions ?? null };
+  }
+
+  /** For booking-service, which decides who may see them (the driver of a confirmed booking). */
+  async getAccessInstructions(id: string): Promise<{ accessInstructions: string | null }> {
+    const spot = await this.parkingSpotRepo.findOne({ where: { id } });
+    if (!spot) throw new NotFoundException('Cochera no encontrada');
+    return { accessInstructions: spot.accessInstructions ?? null };
+  }
+
+  /**
+   * Replaces the spot's blocked days. Past ranges are dropped. A day that already has a
+   * booking can't be blocked -- the owner has to cancel it first, so nobody arrives to a
+   * closed spot.
+   */
+  async setBlockedDates(id: string, ownerId: string, ranges: BlockedDateRange[]): Promise<ParkingSpotResponse> {
+    const spot = await this.getOwnedSpot(id, ownerId);
+    for (const range of ranges) {
+      if (range.from > range.to) {
+        throw new BadRequestException('Cada período tiene que terminar el mismo día o después de empezar.');
+      }
+      if (daysBetween(range.from, range.to) > MAX_BLOCKED_RANGE_DAYS) {
+        throw new BadRequestException(`Cada período puede tener hasta ${MAX_BLOCKED_RANGE_DAYS} días.`);
+      }
+    }
+    const upcoming = upcomingBlockedDates(ranges.map((range) => ({ from: range.from, to: range.to })));
+    if (upcoming.length > 0) {
+      const from = upcoming.reduce((min, range) => (range.from < min ? range.from : min), upcoming[0].from);
+      const to = upcoming.reduce((max, range) => (range.to > max ? range.to : max), upcoming[0].to);
+      const bookings = await this.bookingClient.getActiveBookings(spot.id, from, addOneDay(to));
+      const clash = bookings.find((booking) => overlapsBlockedDates(upcoming, booking.start, booking.end));
+      if (clash) {
+        throw new ConflictException(
+          `Ya tenés una reserva el ${formatPlainDate(clash.start)}. Cancelala antes de bloquear ese día.`,
+        );
+      }
+    }
+    spot.blockedDates = upcoming;
+    await this.parkingSpotRepo.save(spot);
+    return this.findById(id);
+  }
+
   async moderate(id: string, action: 'suspend' | 'restore', reason: string | null): Promise<ParkingSpotResponse> {
     const spot = await this.parkingSpotRepo.findOne({ where: { id } });
     if (!spot || spot.status === ParkingSpotStatus.DELETED) throw new NotFoundException('Cochera no encontrada');

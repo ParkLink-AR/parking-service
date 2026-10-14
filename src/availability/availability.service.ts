@@ -5,6 +5,7 @@ import { ParkingSpot, ParkingSpotStatus } from '../parking-spots/entities/parkin
 import { ParkingSpotSchedule } from '../parking-spots/entities/parking-spot-schedule.entity';
 import { BookingClientService } from '../booking-client/booking-client.service';
 import { publishedWindowsForDay } from './published-schedule';
+import { isDateBlocked } from '../parking-spots/blocked-dates';
 import { buenosAiresMidnight, datesInRange, formatBuenosAires } from './buenos-aires-time';
 import {
   subtractIntervalsWithCapacity,
@@ -48,7 +49,8 @@ export class AvailabilityService {
 
     const days: DayAvailabilityResponse[] = [];
     for (const dateISO of datesInRange(from, to)) {
-      const baseWindows = publishedWindowsForDay(schedule, dateISO);
+      // A day the owner closed by hand counts as closed, whatever the weekly schedule says.
+      const baseWindows = isDateBlocked(spot.blockedDates, dateISO) ? [] : publishedWindowsForDay(schedule, dateISO);
       const baseIsEmpty = baseWindows.length === 0;
 
       let freeWindows: TimeWindow[] = [];
