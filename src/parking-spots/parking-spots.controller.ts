@@ -25,6 +25,7 @@ import { UpdateStatusDto } from './dto/update-status.dto';
 import { DeletePhotoDto } from './dto/delete-photo.dto';
 import { ReorderPhotosDto } from './dto/reorder-photos.dto';
 import { ReviewParkingSpotDto } from './dto/review-parking-spot.dto';
+import { ModerateParkingSpotDto } from './dto/moderate-parking-spot.dto';
 import { ParkingSpotsBatchQueryDto } from './dto/parking-spots-batch-query.dto';
 import { AvailabilityService } from '../availability/availability.service';
 import { AvailabilityQueryDto } from '../availability/dto/availability-query.dto';
@@ -250,9 +251,17 @@ export class ParkingSpotsController {
   // gateway/app/routes.py), así que el trust boundary es el gateway mismo --
   // igual que /admin/tickets en booking-service, este controller no vuelve
   // a chequear un rol acá.
+  // Sin status: las pendientes de revisión (lo que usa "Cocheras nuevas"). Con status o q:
+  // el buscador de todas las cocheras del panel.
   @Get('admin/parking-spots')
-  findPendingReview() {
-    return this.parkingSpotsService.findPendingReview();
+  findForAdmin(@Query('status') status?: string, @Query('q') query?: string) {
+    if (!status && !query) return this.parkingSpotsService.findPendingReview();
+    return this.parkingSpotsService.adminSearch(status, query);
+  }
+
+  @Patch('admin/parking-spots/:id/moderation')
+  moderateSpot(@Param('id') id: string, @Body() dto: ModerateParkingSpotDto) {
+    return this.parkingSpotsService.moderate(id, dto.action, dto.reason ?? null);
   }
 
   @Get('admin/parking-spots/:id')

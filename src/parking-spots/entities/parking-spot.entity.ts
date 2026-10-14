@@ -198,6 +198,14 @@ export class ParkingSpot {
   @Column({ name: 'paused_by_account', type: 'boolean', default: false })
   pausedByAccount!: boolean;
 
+  // Suspendida por ParkLink desde el panel (denuncias, problemas): queda PAUSED y el dueño
+  // no la puede reactivar hasta que un admin la restaure. moderationNote dice por qué.
+  @Column({ name: 'suspended_by_admin', type: 'boolean', default: false })
+  suspendedByAdmin!: boolean;
+
+  @Column({ name: 'moderation_note', type: 'text', nullable: true })
+  moderationNote!: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 

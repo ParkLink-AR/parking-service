@@ -81,6 +81,9 @@ export interface ParkingSpotResponse {
   photos: string[];
   verificationPhotos: string[];
   reviewNotes: string | null;
+  // Suspendida por ParkLink (ver moderate()), con el motivo.
+  suspendedByAdmin: boolean;
+  moderationNote: string | null;
   rules: string[];
   status: ParkingSpotStatus;
   createdAt: Date;
@@ -120,6 +123,8 @@ const BASE_COLUMNS: Array<[string, string]> = [
   ['spot.photos', 'photos'],
   ['spot.verificationPhotos', 'verificationPhotos'],
   ['spot.reviewNotes', 'reviewNotes'],
+  ['spot.suspendedByAdmin', 'suspendedByAdmin'],
+  ['spot.moderationNote', 'moderationNote'],
   ['spot.rules', 'rules'],
   ['spot.status', 'status'],
   ['spot.createdAt', 'createdAt'],
@@ -197,6 +202,8 @@ function toResponse(
     photos: raw.photos ?? [],
     verificationPhotos: raw.verificationPhotos ?? [],
     reviewNotes: raw.reviewNotes ?? null,
+    suspendedByAdmin: raw.suspendedByAdmin === true,
+    moderationNote: raw.moderationNote ?? null,
     rules: raw.rules ?? [],
     status: raw.status,
     createdAt: raw.createdAt,
@@ -539,6 +546,7 @@ export class ParkingSpotsService {
     if (spot.stayEnabled) this.validateStayCoherence(spot);
 
     const changingLocation = dto.address !== undefined || dto.lat !== undefined || dto.lng !== undefined;
+    const addressChanged = changingLocation && dto.address !== spot.address;
     if (changingLocation) {
       if (dto.address === undefined || dto.lat === undefined || dto.lng === undefined) {
         throw new BadRequestException('address, lat and lng must all be provided together to change the location.');
@@ -550,6 +558,8 @@ export class ParkingSpotsService {
       spot.title = dto.address.split(',')[0]?.trim() || dto.address;
       // GeoJSON format: TypeORM/PostGIS espera { type: 'Point', coordinates: [lng, lat] }
       spot.location = { type: 'Point', coordinates: [dto.lng, dto.lat] };
+      // Otra dirección es otra cochera: vuelve a revisión antes de seguir publicada.
+      if (addressChanged) this.sendBackToReview(spot);
     }
 
     await this.parkingSpotRepo.save(spot);
@@ -677,8 +687,21 @@ export class ParkingSpotsService {
       throw new BadRequestException(`Una cochera puede tener hasta ${MAX_PHOTOS} fotos.`);
     }
     spot.photos = [...current, ...urls];
+    // Fotos nuevas en una cochera ya publicada: un admin las mira antes de que se vean.
+    this.sendBackToReview(spot);
     await this.parkingSpotRepo.save(spot);
     return this.findById(id);
+  }
+
+  // Una cochera ya aprobada a la que el dueño le cambió algo importante (la dirección, fotos
+  // nuevas) vuelve a PENDING_REVIEW: sale de search() hasta que un admin la apruebe de
+  // nuevo. Las reservas ya hechas siguen en pie. Una nueva, rechazada o suspendida no cambia.
+  private sendBackToReview(spot: ParkingSpot): void {
+    if (spot.suspendedByAdmin) return;
+    if (spot.status === ParkingSpotStatus.ACTIVE || spot.status === ParkingSpotStatus.PAUSED) {
+      spot.status = ParkingSpotStatus.PENDING_REVIEW;
+      spot.reviewNotes = null;
+    }
   }
 
   async removePhoto(id: string, ownerId: string, url: string): Promise<ParkingSpotResponse> {
@@ -713,6 +736,9 @@ export class ParkingSpotsService {
     const spot = await this.getOwnedSpot(id, ownerId);
     if (spot.pausedByAccount) {
       throw new ForbiddenException('No podés cambiar el estado de la cochera mientras tu cuenta no esté activa.');
+    }
+    if (spot.suspendedByAdmin) {
+      throw new ForbiddenException('ParkLink suspendió esta cochera. Escribinos desde Ayuda para revisarlo.');
     }
     spot.status = status;
     await this.parkingSpotRepo.save(spot);
@@ -872,6 +898,61 @@ export class ParkingSpotsService {
       owner_user_id: spot.ownerId,
       decision,
       notes: spot.reviewNotes,
+    });
+    return this.findById(id);
+  }
+
+  // Buscador de cocheras del panel: por estado ('all' = todas menos eliminadas) y por texto
+  // (título o dirección). Las suspendidas por ParkLink se piden con status 'suspended'.
+  async adminSearch(status: string | undefined, query: string | undefined): Promise<ParkingSpotResponse[]> {
+    const builder = selectBaseColumns(this.parkingSpotRepo.createQueryBuilder('spot'))
+      .addSelect('ST_X(spot.location::geometry)', 'lng')
+      .addSelect('ST_Y(spot.location::geometry)', 'lat');
+    if (status === 'suspended') {
+      builder.where('spot.suspendedByAdmin = true');
+    } else if (status && status !== 'all') {
+      builder.where('spot.status = :status', { status });
+    } else {
+      builder.where('spot.status <> :deleted', { deleted: ParkingSpotStatus.DELETED });
+    }
+    if (query?.trim()) {
+      builder.andWhere('(spot.title ILIKE :query OR spot.address ILIKE :query OR CAST(spot.id AS text) LIKE :prefix)', {
+        query: `%${query.trim()}%`,
+        prefix: `${query.trim().toLowerCase()}%`,
+      });
+    }
+    const raw = await builder.orderBy('spot.updatedAt', 'DESC').limit(200).getRawMany();
+    const schedules = await this.scheduleForMany(raw.map((row) => row.id));
+    const spots = raw.map((row) => toResponse(row, schedules.get(row.id) ?? []));
+    await this.applyRatings(spots);
+    return spots;
+  }
+
+  // Suspender una cochera publicada (denuncia, problema) o restaurarla. Suspendida queda
+  // PAUSED y el dueño no la puede reactivar; al restaurarla vuelve a ACTIVE (o PAUSED, si la
+  // cuenta del dueño no está activa). El dueño se entera en los dos casos.
+  async moderate(id: string, action: 'suspend' | 'restore', reason: string | null): Promise<ParkingSpotResponse> {
+    const spot = await this.parkingSpotRepo.findOne({ where: { id } });
+    if (!spot || spot.status === ParkingSpotStatus.DELETED) throw new NotFoundException('Cochera no encontrada');
+    if (action === 'suspend') {
+      if (!reason?.trim()) throw new BadRequestException('Contá brevemente el motivo de la suspensión.');
+      if (spot.suspendedByAdmin) throw new ConflictException('La cochera ya está suspendida.');
+      spot.suspendedByAdmin = true;
+      spot.moderationNote = reason.trim();
+      spot.status = ParkingSpotStatus.PAUSED;
+    } else {
+      if (!spot.suspendedByAdmin) throw new ConflictException('La cochera no está suspendida.');
+      spot.suspendedByAdmin = false;
+      spot.moderationNote = null;
+      spot.status = spot.pausedByAccount ? ParkingSpotStatus.PAUSED : ParkingSpotStatus.ACTIVE;
+    }
+    await this.parkingSpotRepo.save(spot);
+    await this.events.publish('parking_spot.reviewed', {
+      parking_spot_id: spot.id,
+      parking_spot_title: spot.title,
+      owner_user_id: spot.ownerId,
+      decision: action === 'suspend' ? 'suspended' : 'restored',
+      notes: action === 'suspend' ? spot.moderationNote : null,
     });
     return this.findById(id);
   }
