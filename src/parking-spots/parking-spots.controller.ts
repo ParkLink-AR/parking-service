@@ -122,9 +122,9 @@ export class ParkingSpotsController {
   update(
     @Param('id') id: string,
     @Body() dto: UpdateParkingSpotDto,
-    @Headers('x-user-id') _userId?: string,
+    @Headers('x-user-id') userId?: string,
   ) {
-    return this.parkingSpotsService.update(id, dto);
+    return this.parkingSpotsService.update(id, this.requireUserId(userId), dto);
   }
 
   @Get('users/:id/parking-spots')

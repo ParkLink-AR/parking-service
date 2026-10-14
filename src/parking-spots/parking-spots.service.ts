@@ -527,9 +527,9 @@ export class ParkingSpotsService {
     return this.findById(saved.id);
   }
 
-  async update(id: string, dto: UpdateParkingSpotDto): Promise<ParkingSpotResponse> {
-    const spot = await this.parkingSpotRepo.findOne({ where: { id } });
-    if (!spot) throw new NotFoundException('Cochera no encontrada');
+  async update(id: string, ownerId: string, dto: UpdateParkingSpotDto): Promise<ParkingSpotResponse> {
+    // Only its owner can change a spot -- same check as photos, status and delete.
+    const spot = await this.getOwnedSpot(id, ownerId);
 
     if (dto.hourlyEnabled !== undefined) spot.hourlyEnabled = dto.hourlyEnabled;
     if (dto.pricePerHour !== undefined) spot.pricePerHour = dto.pricePerHour;
