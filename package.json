@@ -16,6 +16,7 @@
     "@nestjs/core": "^10.4.22",
     "@nestjs/platform-express": "^10.4.22",
     "@nestjs/typeorm": "^10.0.2",
+    "@sentry/node": "^9.47.2",
     "amqplib": "^0.10.9",
     "axios": "^1.7.2",
     "class-transformer": "^0.5.1",

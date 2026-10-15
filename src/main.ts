@@ -1,7 +1,10 @@
-import { NestFactory } from '@nestjs/core';
+import { HttpAdapterHost, NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { trustedCallerMiddleware } from './trusted-caller.middleware';
+import { initMonitoring, MonitoringExceptionFilter } from './monitoring';
+
+initMonitoring();
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -18,6 +21,7 @@ async function bootstrap() {
   );
 
   app.enableCors();
+  app.useGlobalFilters(new MonitoringExceptionFilter(app.get(HttpAdapterHost).httpAdapter));
 
   const port = process.env.PORT ?? 3001;
   await app.listen(port);
