@@ -1,5 +1,6 @@
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsISO8601, IsLatitude, IsLongitude, IsNumber, IsOptional, Min, ValidateIf } from 'class-validator';
+import { IsBoolean, IsIn, IsISO8601, IsLatitude, IsLongitude, IsNumber, IsOptional, Min, ValidateIf } from 'class-validator';
+import { SEARCH_SORTS, SearchSort } from '../search-sort';
 
 export class SearchParkingSpotDto {
   // Mobile always resolves a free-text search to coordinates first (via
@@ -66,4 +67,9 @@ export class SearchParkingSpotDto {
   @ValidateIf((dto: SearchParkingSpotDto) => dto.from !== undefined || dto.to !== undefined)
   @IsISO8601()
   to?: string;
+
+  // Cómo ordenar los resultados: 'distance' (por defecto), 'price' o 'rating' -- ver search-sort.ts.
+  @IsOptional()
+  @IsIn(SEARCH_SORTS)
+  sort?: SearchSort;
 }

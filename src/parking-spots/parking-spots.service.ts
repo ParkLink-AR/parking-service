@@ -13,6 +13,7 @@ import { EventsService } from '../events/events.service';
 import { StayRates, VehicleType, VEHICLE_TYPES } from './vehicle-type';
 import { addOneDay, buenosAiresToday, formatBuenosAires } from '../availability/buenos-aires-time';
 import { BlockedDateRange, overlapsBlockedDates, upcomingBlockedDates } from './blocked-dates';
+import { sortSpots } from './search-sort';
 
 export interface ScheduleEntryResponse {
   dayOfWeek: number;
@@ -331,6 +332,11 @@ export class ParkingSpotsService {
    * entre la cochera y el punto de búsqueda, sin necesidad de llamar a ninguna API externa.
    */
   async search(filters: SearchParkingSpotDto): Promise<ParkingSpotResponse[]> {
+    const spots = await this.searchUnsorted(filters);
+    return sortSpots(spots, filters.sort, filters.stayOnly === true);
+  }
+
+  private async searchUnsorted(filters: SearchParkingSpotDto): Promise<ParkingSpotResponse[]> {
     const origin = `ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography`;
     const query = selectBaseColumns(this.parkingSpotRepo.createQueryBuilder('spot'))
       .addSelect('ST_X(spot.location::geometry)', 'lng')
