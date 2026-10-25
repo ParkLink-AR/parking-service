@@ -140,6 +140,25 @@ export class SchemaBootstrapService implements OnModuleInit {
       END$$;
     `);
 
+    // Backstop de validateStayCoherence para la media estadía: sólo dentro de una estadía, y
+    // con precio. Las cocheras existentes quedan con half_day_enabled = false (el default de
+    // la columna), así que cumplen sin tocarlas.
+    await this.dataSource.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'chk_parking_spots_half_day'
+        ) THEN
+          ALTER TABLE parking_spots
+            ADD CONSTRAINT chk_parking_spots_half_day
+            CHECK (
+              half_day_enabled = false
+              OR (stay_enabled = true AND price_per_half_day IS NOT NULL AND price_per_half_day > 0)
+            );
+        END IF;
+      END$$;
+    `);
+
     this.logger.log('Schema bootstrap OK (btree_gist, parking_spot_schedules + parking_spots constraints).');
   }
 }

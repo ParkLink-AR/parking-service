@@ -3,6 +3,7 @@ import { ParkingSpot, ParkingSpotStatus } from '../../src/parking-spots/entities
 import { ParkingSpotsService } from '../../src/parking-spots/parking-spots.service';
 import { bookingClientWith, makeSpot, OWNER_ID, repoReturning, SPOT_ID } from '../fakes';
 import { ba } from '../helpers';
+import { VehicleType } from '../../src/parking-spots/vehicle-type';
 
 const STRANGER_ID = '99999999-9999-9999-9999-999999999999';
 
@@ -196,5 +197,109 @@ describe('ParkingSpotsService.reviewSpot', () => {
 
   it('only reviews spots that are waiting for it', async () => {
     await expect(setup().service.reviewSpot(SPOT_ID, 'approved', null)).rejects.toBeInstanceOf(ConflictException);
+  });
+});
+
+describe('ParkingSpotsService half-day (media estadía)', () => {
+  const STAY = { stayEnabled: true, pricePerDay: 10000, pricePerWeek: 60000, pricePerMonth: 200000, maxStayDays: 30 };
+  const NEW_SPOT = {
+    title: 'Cochera', address: 'Honduras 4800', lat: -34.58, lng: -58.43, hourlyEnabled: false, vehicleTypes: [VehicleType.CAR],
+  };
+
+  // create() builds the entity through the repositories; what these tests check is what got saved.
+  function creating() {
+    const parkingSpotRepo = {
+      ...repoReturning(null),
+      create: jest.fn((value: Partial<ParkingSpot>) => Object.assign(new ParkingSpot(), value)),
+      save: jest.fn(async (value: ParkingSpot) => Object.assign(value, { id: SPOT_ID })),
+    };
+    const scheduleRepo = { ...repoReturning(null), create: jest.fn((value) => value) };
+    const service = new ParkingSpotsService(
+      parkingSpotRepo as never,
+      scheduleRepo as never,
+      bookingClientWith() as never,
+      // An active owner with payout details: the account checks create() runs first.
+      { getOwnerStatus: jest.fn().mockResolvedValue({ accountStatus: 'ACTIVE', hasPayoutInfo: true }) } as never,
+      { publish: jest.fn() } as never,
+    );
+    jest.spyOn(service, 'findById').mockImplementation(async () => ({ id: SPOT_ID }) as never);
+    const saved = () => parkingSpotRepo.save.mock.calls.at(-1)?.[0] as ParkingSpot;
+    return { service, saved };
+  }
+
+  it('a new spot has it off unless its owner turns it on', async () => {
+    const { service, saved } = creating();
+    await service.create({ ...NEW_SPOT, ...STAY } as never, OWNER_ID);
+    expect(saved().halfDayEnabled).toBe(false);
+    expect(saved().pricePerHalfDay).toBeNull();
+
+    await service.create({ ...NEW_SPOT, ...STAY, halfDayEnabled: true, pricePerHalfDay: 6000 } as never, OWNER_ID);
+    expect(saved().halfDayEnabled).toBe(true);
+    expect(saved().pricePerHalfDay).toBe(6000);
+  });
+
+  it("can't be turned on without its price, nor without the stay it belongs to", async () => {
+    const { service, saved } = creating();
+    await expect(service.create({ ...NEW_SPOT, ...STAY, halfDayEnabled: true } as never, OWNER_ID)).rejects.toThrow('pricePerHalfDay');
+    // Without the stay there's no half-day: it's just ignored (the spot needs some mode, so hourly here).
+    await service.create({
+      ...NEW_SPOT, hourlyEnabled: true, pricePerHour: 1000, halfDayEnabled: true, pricePerHalfDay: 6000,
+    } as never, OWNER_ID);
+    expect(saved().halfDayEnabled).toBe(false);
+  });
+
+  it('an existing spot can turn it on, and pricing it is required then', async () => {
+    const { service, saved } = setup();
+    await expect(service.update(SPOT_ID, OWNER_ID, { halfDayEnabled: true })).rejects.toBeInstanceOf(BadRequestException);
+    await service.update(SPOT_ID, OWNER_ID, { halfDayEnabled: true, pricePerHalfDay: 6000 });
+    expect(saved()?.halfDayEnabled).toBe(true);
+    expect(saved()?.pricePerHalfDay).toBe(6000);
+  });
+
+  it('turning it off, or turning the stay off, clears it', async () => {
+    const { service, saved } = setup(makeSpot({ halfDayEnabled: true, pricePerHalfDay: 6000 }));
+    await service.update(SPOT_ID, OWNER_ID, { halfDayEnabled: false });
+    expect(saved()?.pricePerHalfDay).toBeNull();
+
+    const second = setup(makeSpot({ halfDayEnabled: true, pricePerHalfDay: 6000 }));
+    await second.service.update(SPOT_ID, OWNER_ID, { stayEnabled: false });
+    expect(second.saved()?.halfDayEnabled).toBe(false);
+    expect(second.saved()?.pricePerHalfDay).toBeNull();
+  });
+
+  it('with prices by vehicle, each vehicle needs its own and the lowest is the "desde"', async () => {
+    const byVehicle = {
+      [VehicleType.CAR]: { day: 10000, week: 60000, month: 200000, halfDay: 6000 },
+      [VehicleType.SUV]: { day: 15000, week: 90000, month: 300000 },
+    };
+    const { service, saved } = setup(makeSpot({ vehicleTypes: [VehicleType.CAR, VehicleType.SUV] }));
+    await expect(
+      service.update(SPOT_ID, OWNER_ID, { halfDayEnabled: true, stayPricesByVehicleType: byVehicle }),
+    ).rejects.toThrow('suv.halfDay');
+
+    byVehicle[VehicleType.SUV] = { ...byVehicle[VehicleType.SUV], halfDay: 9000 } as never;
+    await service.update(SPOT_ID, OWNER_ID, { halfDayEnabled: true, stayPricesByVehicleType: byVehicle });
+    expect(saved()?.pricePerHalfDay).toBe(6000);
+  });
+});
+
+describe('ParkingSpotsService capacity', () => {
+  const padded = (startHour: number, endHour: number) => ({
+    start: new Date(ba('2026-11-02', startHour).getTime() - 15 * 60 * 1000),
+    end: new Date(ba('2026-11-02', endHour).getTime() + 15 * 60 * 1000),
+  });
+
+  it("can't go below the bookings running at once", async () => {
+    const { service, parkingSpotRepo } = setup(makeSpot({ capacity: 3 }), [padded(9, 11), padded(10, 12)]);
+    await expect(service.update(SPOT_ID, OWNER_ID, { capacity: 1 })).rejects.toThrow('2 reservas al mismo tiempo');
+    expect(parkingSpotRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('can go down to them, and up any time', async () => {
+    const { service, saved } = setup(makeSpot({ capacity: 3 }), [padded(9, 11), padded(10, 12)]);
+    await service.update(SPOT_ID, OWNER_ID, { capacity: 2 });
+    expect(saved()?.capacity).toBe(2);
+    await service.update(SPOT_ID, OWNER_ID, { capacity: 5 });
+    expect(saved()?.capacity).toBe(5);
   });
 });

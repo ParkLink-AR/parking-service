@@ -26,6 +26,18 @@ describe('StaysService.getQuote', () => {
     expect(quote.endDateTime).toBe('2026-10-22T09:00:00-03:00');
   });
 
+  // The booking that started this: at 12:56, a stay "from today at 02:00" was quoted as a full
+  // day and then booked from 12:56 -- a full day paid for 13 hours.
+  it("refuses a check-in hour that already went by today, not the one under way", async () => {
+    // It's 12:00 (fake time): 09:00 is gone, 12:00 is the hour under way, 15:00 is ahead.
+    await expect(serviceWith().getQuote(SPOT_ID, '2026-10-15', '2026-10-16', 9)).rejects.toThrow('ya pasó');
+    await expect(serviceWith().getQuote(SPOT_ID, '2026-10-15', '2026-10-16', 2)).rejects.toBeInstanceOf(BadRequestException);
+    const underWay = await serviceWith().getQuote(SPOT_ID, '2026-10-15', '2026-10-16', 12);
+    expect(underWay.startDateTime).toBe('2026-10-15T12:00:00-03:00');
+    const later = await serviceWith().getQuote(SPOT_ID, '2026-10-15', '2026-10-16', 15);
+    expect(later.endDateTime).toBe('2026-10-16T15:00:00-03:00');
+  });
+
   it('refuses a stay over a day the owner closed', async () => {
     const spot = makeSpot({ blockedDates: [{ from: '2026-10-21', to: '2026-10-21' }] });
     await expect(serviceWith(spot).getQuote(SPOT_ID, '2026-10-20', '2026-10-23', 9)).rejects.toBeInstanceOf(ConflictException);

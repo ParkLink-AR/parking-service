@@ -19,4 +19,6 @@ export interface StayRates {
   day: number;
   week: number;
   month: number;
+  // Media estadía (12 h) -- only when the spot offers it (see ParkingSpot.halfDayEnabled).
+  halfDay?: number;
 }

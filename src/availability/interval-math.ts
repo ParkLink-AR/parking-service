@@ -132,3 +132,29 @@ function mergeIntervals(intervals: TimeWindow[]): TimeWindow[] {
   }
   return merged;
 }
+
+// booking-service sends each booking padded by the 15 minutes it keeps free on both sides
+// (entity.OccupancyWindow there) -- what availability subtracts. To count how many bookings
+// really run at once, that padding comes off first: two back-to-back bookings 15 minutes
+// apart would otherwise look like they overlap.
+const BOOKING_GRACE_MS = 15 * 60 * 1000;
+
+/** The most bookings running at the same instant, from booking-service's padded windows. */
+export function maxConcurrentBookings(paddedWindows: TimeWindow[]): number {
+  const events: [number, number][] = [];
+  for (const window of paddedWindows) {
+    const start = window.start.getTime() + BOOKING_GRACE_MS;
+    const end = window.end.getTime() - BOOKING_GRACE_MS;
+    if (end <= start) continue;
+    events.push([start, 1], [end, -1]);
+  }
+  // Ends before starts at the same instant: one booking ending as another begins isn't overlap.
+  events.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  let running = 0;
+  let most = 0;
+  for (const [, delta] of events) {
+    running += delta;
+    most = Math.max(most, running);
+  }
+  return most;
+}

@@ -2,10 +2,11 @@ import {
   AvailabilityStatus,
   determineStatus,
   filterOverlapping,
+  maxConcurrentBookings,
   subtractIntervals,
   subtractIntervalsWithCapacity,
 } from '../../src/availability/interval-math';
-import { hours, window } from '../helpers';
+import { ba, hours, window } from '../helpers';
 
 const DAY = '2026-10-20';
 
@@ -64,5 +65,25 @@ describe('determineStatus', () => {
     expect(determineStatus(true, [])).toBe(AvailabilityStatus.Closed);
     expect(determineStatus(false, [])).toBe(AvailabilityStatus.Full);
     expect(determineStatus(false, [window(DAY, 8, 9)])).toBe(AvailabilityStatus.Available);
+  });
+});
+
+describe('maxConcurrentBookings', () => {
+  // booking-service sends each booking padded by 15 minutes on both sides.
+  const padded = (startHour: number, endHour: number) => ({
+    start: new Date(ba('2026-10-20', startHour).getTime() - 15 * 60 * 1000),
+    end: new Date(ba('2026-10-20', endHour).getTime() + 15 * 60 * 1000),
+  });
+
+  it('counts the bookings really running at once', () => {
+    expect(maxConcurrentBookings([])).toBe(0);
+    expect(maxConcurrentBookings([padded(8, 10), padded(9, 11), padded(9, 12)])).toBe(3);
+    expect(maxConcurrentBookings([padded(8, 10), padded(11, 12)])).toBe(1);
+  });
+
+  it("doesn't count back-to-back bookings as overlapping, even with their padding", () => {
+    // 08-10 and 10:15-11: the 15 minutes apart the rules keep between them.
+    const second = { start: new Date(ba('2026-10-20', 10).getTime()), end: new Date(ba('2026-10-20', 11, 15).getTime()) };
+    expect(maxConcurrentBookings([padded(8, 10), second])).toBe(1);
   });
 });

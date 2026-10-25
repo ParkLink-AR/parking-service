@@ -23,6 +23,8 @@ export function makeSpot(overrides: Partial<ParkingSpot> = {}): ParkingSpot {
     stayAvailableUntil: null,
     maxStayDays: 90,
     stayPricesByVehicleType: null,
+    halfDayEnabled: false,
+    pricePerHalfDay: null,
     requireVehicle: false,
     covered: true,
     vehicleTypes: [VehicleType.CAR],

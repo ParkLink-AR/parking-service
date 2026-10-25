@@ -12,6 +12,8 @@ function spot(id: string, overrides: Partial<Spot> = {}): Spot {
     stayEnabled: false,
     pricePerDay: null,
     stayPricesByVehicleType: null,
+    halfDayEnabled: false,
+    pricePerHalfDay: null,
     rating: 0,
     reviewCount: 0,
     ...overrides,
@@ -22,17 +24,17 @@ const ids = (spots: Spot[]) => spots.map((s) => s.id);
 
 describe('comparablePrice', () => {
   it('is the cheapest hourly rate, any vehicle', () => {
-    expect(comparablePrice(spot('a', { pricePerHour: null, pricePerHourByVehicleType: { car: 900, suv: 1200 } }), false)).toBe(900);
+    expect(comparablePrice(spot('a', { pricePerHour: null, pricePerHourByVehicleType: { car: 900, suv: 1200 } }), {})).toBe(900);
   });
 
   it('is the cheapest daily rate when looking for stays', () => {
     const stay = spot('a', { stayEnabled: true, pricePerDay: 8000, stayPricesByVehicleType: { car: { day: 7000 } } });
-    expect(comparablePrice(stay, true)).toBe(7000);
+    expect(comparablePrice(stay, { stays: true })).toBe(7000);
   });
 
   it('is null for a spot without that kind of price', () => {
-    expect(comparablePrice(spot('a', { hourlyEnabled: false }), false)).toBeNull();
-    expect(comparablePrice(spot('a'), true)).toBeNull();
+    expect(comparablePrice(spot('a', { hourlyEnabled: false }), {})).toBeNull();
+    expect(comparablePrice(spot('a'), { stays: true })).toBeNull();
   });
 });
 

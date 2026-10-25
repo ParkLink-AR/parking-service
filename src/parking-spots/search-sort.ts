@@ -9,7 +9,9 @@ export interface SortableSpot {
   pricePerHourByVehicleType: Partial<Record<string, number>> | null;
   stayEnabled: boolean;
   pricePerDay: number | null;
-  stayPricesByVehicleType: Partial<Record<string, { day: number }>> | null;
+  stayPricesByVehicleType: Partial<Record<string, { day: number; halfDay?: number }>> | null;
+  halfDayEnabled: boolean;
+  pricePerHalfDay: number | null;
   rating: number;
   reviewCount: number;
 }
@@ -19,20 +21,43 @@ function cheapest(values: (number | null | undefined)[]): number | null {
   return prices.length > 0 ? Math.min(...prices) : null;
 }
 
+export interface PriceOptions {
+  /** Looking for stays: compare the daily rate instead of the hourly one. */
+  stays?: boolean;
+  /** Looking for half-days (12 h): compare that block's price. Wins over `stays`. */
+  halfDay?: boolean;
+  /** The driver's vehicle: compare its own rate when the spot charges by vehicle. */
+  vehicleType?: string;
+}
+
 /**
  * The price a spot is compared by: its lowest hourly rate (any vehicle) -- or, when looking
- * for stays, its lowest daily rate. The platform's commission is the same percentage for
- * every spot, so the owner's own rates order them exactly as drivers see them. null when it
- * has no such price (a stay-only spot in an hourly search).
+ * for stays, its lowest daily rate, and for half-days, its 12-hour price. With the driver's vehicle, that vehicle's rate instead
+ * (what they'd actually pay). The platform's commission is the same percentage for every
+ * spot, so the owner's own rates order them exactly as drivers see them. null when it has
+ * no such price (a stay-only spot in an hourly search).
  */
-export function comparablePrice(spot: SortableSpot, stays: boolean): number | null {
+export function comparablePrice(
+  spot: SortableSpot,
+  { stays = false, halfDay = false, vehicleType }: PriceOptions = {},
+): number | null {
+  if (halfDay) {
+    if (!spot.stayEnabled || !spot.halfDayEnabled) return null;
+    const byVehicle = spot.stayPricesByVehicleType;
+    if (byVehicle && vehicleType) return cheapest([byVehicle[vehicleType]?.halfDay]);
+    return cheapest([spot.pricePerHalfDay, ...Object.values(byVehicle ?? {}).map((rates) => rates?.halfDay)]);
+  }
   if (stays) {
     if (!spot.stayEnabled) return null;
-    const perVehicle = Object.values(spot.stayPricesByVehicleType ?? {}).map((rates) => rates?.day);
+    const byVehicle = spot.stayPricesByVehicleType;
+    if (byVehicle && vehicleType) return cheapest([byVehicle[vehicleType]?.day]);
+    const perVehicle = Object.values(byVehicle ?? {}).map((rates) => rates?.day);
     return cheapest([spot.pricePerDay, ...perVehicle]);
   }
   if (!spot.hourlyEnabled) return null;
-  return cheapest([spot.pricePerHour, ...Object.values(spot.pricePerHourByVehicleType ?? {})]);
+  const byVehicle = spot.pricePerHourByVehicleType;
+  if (byVehicle && vehicleType) return cheapest([byVehicle[vehicleType]]);
+  return cheapest([spot.pricePerHour, ...Object.values(byVehicle ?? {})]);
 }
 
 /**
@@ -40,14 +65,14 @@ export function comparablePrice(spot: SortableSpot, stays: boolean): number | nu
  * and the closest of two equals comes first. By price, spots without a comparable price go
  * last; by rating, the ones nobody reviewed yet go last.
  */
-export function sortSpots<T extends SortableSpot>(spots: T[], sort: SearchSort | undefined, stays = false): T[] {
+export function sortSpots<T extends SortableSpot>(spots: T[], sort: SearchSort | undefined, priceOptions: PriceOptions = {}): T[] {
   const distance = (spot: T) => spot.distanceMeters ?? Number.MAX_SAFE_INTEGER;
   const byDistance = (a: T, b: T) => distance(a) - distance(b);
   const sorted = [...spots];
   if (sort === 'price') {
     sorted.sort((a, b) => {
-      const priceA = comparablePrice(a, stays) ?? Number.POSITIVE_INFINITY;
-      const priceB = comparablePrice(b, stays) ?? Number.POSITIVE_INFINITY;
+      const priceA = comparablePrice(a, priceOptions) ?? Number.POSITIVE_INFINITY;
+      const priceB = comparablePrice(b, priceOptions) ?? Number.POSITIVE_INFINITY;
       return priceA === priceB ? byDistance(a, b) : priceA - priceB;
     });
   } else if (sort === 'rating') {

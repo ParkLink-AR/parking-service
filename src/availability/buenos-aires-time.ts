@@ -43,3 +43,14 @@ export function* datesInRange(from: string, to: string): Generator<string> {
     current = addOneDay(current);
   }
 }
+
+/**
+ * Whether a check-in at `start` has already gone by: it's earlier than the hour under way
+ * (Buenos Aires is a whole number of hours from UTC, so that hour starts at the same instant
+ * everywhere). A check-in within the current hour is still fine -- it's booked from that
+ * moment on -- but one from earlier that day would be charged for hours already gone.
+ */
+export function isPastCheckIn(start: Date, now: Date = new Date()): boolean {
+  const hourMs = 60 * 60 * 1000;
+  return start.getTime() < Math.floor(now.getTime() / hourMs) * hourMs;
+}

@@ -146,6 +146,20 @@ export class CreateParkingSpotDto {
   @Min(1)
   maxStayDays?: number;
 
+  // "Media estadía (12 h)": opcional dentro de la estadía, apagada si no se manda -- ver
+  // ParkingSpot.halfDayEnabled. Su precio es obligatorio al prenderla, salvo que venga por
+  // vehículo (stayPricesByVehicleType[tipo].halfDay); el service guarda ahí el más bajo.
+  @IsOptional()
+  @IsBoolean()
+  halfDayEnabled?: boolean;
+
+  @ValidateIf(
+    (dto: CreateParkingSpotDto) => dto.stayEnabled === true && dto.halfDayEnabled === true && !dto.stayPricesByVehicleType,
+  )
+  @IsNumber()
+  @Min(0.01)
+  pricePerHalfDay?: number;
+
   // Tarifas de estadía distintas según el tipo de vehículo -- alternativa a
   // pricePerDay/Week/Month (que pasan a ser opcionales si viene esto; el service guarda
   // ahí la más baja de cada una). Su forma (una entrada {day, week, month} por cada tipo

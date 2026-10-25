@@ -5,10 +5,11 @@ import { ParkingSpot, ParkingSpotStatus } from '../parking-spots/entities/parkin
 import { BookingClientService } from '../booking-client/booking-client.service';
 import { VehicleType } from '../parking-spots/vehicle-type';
 import {
-  addOneDay, buenosAiresDateTime, buenosAiresMidnight, buenosAiresToday, datesInRange, formatBuenosAires,
+  addOneDay, buenosAiresDateTime, buenosAiresMidnight, buenosAiresToday, datesInRange, formatBuenosAires, isPastCheckIn,
 } from '../availability/buenos-aires-time';
 import { subtractIntervalsWithCapacity, TimeWindow } from '../availability/interval-math';
 import { isDateBlocked, overlapsBlockedDates } from '../parking-spots/blocked-dates';
+import { HALF_DAY_HOURS, halfDayRefusal, halfDayWindow } from './half-day';
 
 // Tope arbitrario para GET .../stays/availability -- a diferencia del
 // endpoint de disponibilidad por hora (que trae las reservas día por día),
@@ -25,6 +26,22 @@ const MAX_CALENDAR_RANGE_DAYS = 93;
 // otra.
 const DAYS_PER_MONTH_UNIT = 30;
 const DAYS_PER_WEEK_UNIT = 7;
+
+/** A half-day's price and exact instants -- see StaysService.getHalfDayQuote. */
+export interface HalfDayQuote {
+  // RFC3339 with the Buenos Aires offset: what booking-service books as Start/End.
+  startDateTime: string;
+  endDateTime: string;
+  hours: number;
+  // Centavos, like StayQuote.amount.
+  amount: number;
+}
+
+/** Each hour of a day a half-day can start at, and whether it can -- see getHalfDayStarts. */
+export interface HalfDayStart {
+  hour: number;
+  available: boolean;
+}
 
 export interface StayDayAvailability {
   date: string;
@@ -139,6 +156,12 @@ export class StaysService {
     // último tramo). Ambos límites del rango usan esta misma hora.
     const startDateTime = buenosAiresDateTime(startDate, startHour);
     const endDateTime = buenosAiresDateTime(endDate, startHour);
+    // A check-in hour already gone today would charge a full first day of which only the rest
+    // is left (booking-service books it from the moment it's made): only the hour under way
+    // and later -- the same rule as a half-day's start (half-day.ts).
+    if (isPastCheckIn(startDateTime)) {
+      throw new BadRequestException('Esa hora de entrada ya pasó: elegí una hora desde la actual en adelante.');
+    }
     if (overlapsBlockedDates(spot.blockedDates, startDateTime, endDateTime)) {
       throw new ConflictException('El propietario cerró la cochera algunos de esos días.');
     }
@@ -259,7 +282,66 @@ export class StaysService {
     return { days };
   }
 
-  private stayRates(spot: ParkingSpot, vehicleType?: VehicleType): { day: number; week: number; month: number } {
+  /**
+   * Quotes and checks a half-day (12 hours from `startHour`:00 on `date`): the spot offers it,
+   * it fits the dates offered for stays and no closed day, and there's room for it the whole
+   * time. The source of truth for its price -- booking-service asks here again when it's booked
+   * (parkingclient.GetHalfDayQuote) instead of trusting the app's.
+   */
+  async getHalfDayQuote(parkingSpotId: string, date: string, startHour: number, vehicleType?: VehicleType): Promise<HalfDayQuote> {
+    const spot = await this.parkingSpotRepo.findOne({ where: { id: parkingSpotId, status: ParkingSpotStatus.ACTIVE } });
+    if (!spot) {
+      throw new NotFoundException('Cochera no encontrada');
+    }
+    const { start, end } = halfDayWindow(date, startHour);
+    const refusal = halfDayRefusal(spot, start);
+    if (refusal) {
+      throw new BadRequestException(refusal);
+    }
+    const halfDay = this.stayRates(spot, vehicleType).halfDay;
+    if (halfDay === null) {
+      throw new BadRequestException('La cochera no tiene cargado el precio de la media estadía.');
+    }
+    const activeBookings = await this.bookingClient.getActiveBookings(spot.id, date, addOneDay(addOneDay(date)));
+    if (!this.isRangeFree(spot, start, end, activeBookings)) {
+      throw new ConflictException('Esa cochera ya tiene otra reserva en ese horario.');
+    }
+    return {
+      startDateTime: formatBuenosAires(start),
+      endDateTime: formatBuenosAires(end),
+      hours: HALF_DAY_HOURS,
+      amount: Math.round(halfDay * 100),
+    };
+  }
+
+  /**
+   * The hours of `date` a half-day can start at -- for the driver to pick one that's free
+   * instead of finding out at the quote. The same rules as getHalfDayQuote, with the spot's
+   * bookings fetched once for the day and the next (a block started at night ends then).
+   */
+  async getHalfDayStarts(parkingSpotId: string, date: string): Promise<{ date: string; starts: HalfDayStart[] }> {
+    const spot = await this.parkingSpotRepo.findOne({ where: { id: parkingSpotId, status: ParkingSpotStatus.ACTIVE } });
+    if (!spot) {
+      throw new NotFoundException('Cochera no encontrada');
+    }
+    if (!spot.stayEnabled || !spot.halfDayEnabled) {
+      throw new BadRequestException('Esta cochera no ofrece media estadía.');
+    }
+    const activeBookings = await this.bookingClient.getActiveBookings(spot.id, date, addOneDay(addOneDay(date)));
+    const now = new Date();
+    const starts: HalfDayStart[] = [];
+    for (let hour = 0; hour < 24; hour++) {
+      const { start, end } = halfDayWindow(date, hour);
+      const available = halfDayRefusal(spot, start, now) === null && this.isRangeFree(spot, start, end, activeBookings);
+      starts.push({ hour, available });
+    }
+    return { date, starts };
+  }
+
+  private stayRates(
+    spot: ParkingSpot,
+    vehicleType?: VehicleType,
+  ): { day: number; week: number; month: number; halfDay: number | null } {
     // Una cochera que cobra la estadía distinto por vehículo cotiza con la tarifa del
     // vehículo del conductor -- sin saber cuál es, no hay precio que dar.
     if (spot.stayPricesByVehicleType) {
@@ -271,7 +353,12 @@ export class StaysService {
       if (!accepted.includes(vehicleType) || !rate) {
         throw new BadRequestException('Esta cochera no acepta ese tipo de vehículo.');
       }
-      return { day: Number(rate.day), week: Number(rate.week), month: Number(rate.month) };
+      return {
+        day: Number(rate.day),
+        week: Number(rate.week),
+        month: Number(rate.month),
+        halfDay: rate.halfDay !== undefined && rate.halfDay !== null ? Number(rate.halfDay) : null,
+      };
     }
     // No debería pasar con stayEnabled=true (lo exige el CHECK de la DB),
     // pero el tipo de spot.pricePerX es `number | null` -- failsafe explícito
@@ -279,6 +366,11 @@ export class StaysService {
     if (spot.pricePerDay === null || spot.pricePerWeek === null || spot.pricePerMonth === null) {
       throw new BadRequestException('La cochera no tiene cargadas las tarifas de estadía.');
     }
-    return { day: spot.pricePerDay, week: spot.pricePerWeek, month: spot.pricePerMonth };
+    return {
+      day: spot.pricePerDay,
+      week: spot.pricePerWeek,
+      month: spot.pricePerMonth,
+      halfDay: spot.pricePerHalfDay !== null ? Number(spot.pricePerHalfDay) : null,
+    };
   }
 }

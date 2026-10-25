@@ -138,6 +138,16 @@ export class UpdateParkingSpotDto {
   @Min(1)
   maxStayDays?: number;
 
+  // "Media estadía (12 h)" -- ver CreateParkingSpotDto. Apagarla borra su precio.
+  @IsOptional()
+  @IsBoolean()
+  halfDayEnabled?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0.01)
+  pricePerHalfDay?: number;
+
   // Tarifas de estadía por tipo de vehículo -- ver CreateParkingSpotDto. `null` explícito
   // vuelve a las mismas tarifas para todos (pricePerDay/Week/Month, que hay que mandar en
   // el mismo request); omitir el campo deja lo que ya había.

@@ -1,6 +1,8 @@
-import { addOneDay, buenosAiresMidnight, buenosAiresToday, datesInRange, formatBuenosAires } from '../../src/availability/buenos-aires-time';
+import {
+  addOneDay, buenosAiresMidnight, buenosAiresToday, datesInRange, formatBuenosAires, isPastCheckIn,
+} from '../../src/availability/buenos-aires-time';
 import { publishedWindowsForDay } from '../../src/availability/published-schedule';
-import { hours } from '../helpers';
+import { ba, hours } from '../helpers';
 
 describe('Buenos Aires time', () => {
   it('midnight is 03:00 UTC', () => {
@@ -42,5 +44,17 @@ describe('publishedWindowsForDay', () => {
 
   it('a 24-hour day goes from midnight to midnight', () => {
     expect(hours(publishedWindowsForDay(schedule, '2026-10-25'))).toEqual([[0, 24]]);
+  });
+});
+
+describe('isPastCheckIn', () => {
+  const now = ba('2026-10-24', 12, 56);
+
+  it('is true for an hour already gone, false for the one under way and later', () => {
+    expect(isPastCheckIn(ba('2026-10-24', 2), now)).toBe(true);
+    expect(isPastCheckIn(ba('2026-10-24', 11), now)).toBe(true);
+    expect(isPastCheckIn(ba('2026-10-24', 12), now)).toBe(false);
+    expect(isPastCheckIn(ba('2026-10-24', 13), now)).toBe(false);
+    expect(isPastCheckIn(ba('2026-10-25', 2), now)).toBe(false);
   });
 });

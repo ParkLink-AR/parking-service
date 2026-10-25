@@ -120,6 +120,18 @@ export class ParkingSpot {
   @Column({ name: 'max_stay_days', type: 'int', nullable: true })
   maxStayDays!: number | null;
 
+  // "Media estadía": un bloque de 12 horas desde la hora que elija el conductor, con precio
+  // cerrado -- parte de la estadía (mismo período ofrecido, mismos días bloqueados), así que
+  // sólo puede estar prendida con stayEnabled. Apagada por defecto: las cocheras que ya
+  // existían no la ofrecen hasta que su dueño la active. Con tarifas de estadía por
+  // vehículo, cada una trae su halfDay y pricePerHalfDay guarda la más baja (el "desde").
+  // Ver StaysService.getHalfDayQuote y el CHECK chk_parking_spots_half_day.
+  @Column({ name: 'half_day_enabled', default: false })
+  halfDayEnabled!: boolean;
+
+  @Column({ name: 'price_per_half_day', type: 'decimal', precision: 10, scale: 2, nullable: true })
+  pricePerHalfDay!: number | null;
+
   // Alternativa a pricePerDay/Week/Month para cocheras donde la estadía también cuesta
   // distinto según el vehículo -- null es "las mismas tarifas para todos". Si está
   // seteado, tiene una entrada {day, week, month} por cada tipo en vehicleTypes, y

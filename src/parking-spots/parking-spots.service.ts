@@ -4,6 +4,10 @@ import { In, Repository } from 'typeorm';
 import { ParkingSpot, ParkingSpotStatus } from './entities/parking-spot.entity';
 import { ParkingSpotSchedule } from './entities/parking-spot-schedule.entity';
 import { SearchParkingSpotDto } from './dto/search-parking-spot.dto';
+import {
+  acceptsStay, fitsVehicle, meetsRating, offersHalfDay, openForHourly, stayWindow, withinPriceRange,
+} from './search-filters';
+import { HALF_DAY_HOURS, halfDayRefusal } from '../stays/half-day';
 import { CreateParkingSpotDto } from './dto/create-parking-spot.dto';
 import { UpdateParkingSpotDto } from './dto/update-parking-spot.dto';
 import { ScheduleEntryDto } from './dto/schedule-entry.dto';
@@ -13,7 +17,8 @@ import { EventsService } from '../events/events.service';
 import { StayRates, VehicleType, VEHICLE_TYPES } from './vehicle-type';
 import { addOneDay, buenosAiresToday, formatBuenosAires } from '../availability/buenos-aires-time';
 import { BlockedDateRange, overlapsBlockedDates, upcomingBlockedDates } from './blocked-dates';
-import { sortSpots } from './search-sort';
+import { maxConcurrentBookings } from '../availability/interval-math';
+import { PriceOptions, sortSpots } from './search-sort';
 
 export interface ScheduleEntryResponse {
   dayOfWeek: number;
@@ -85,6 +90,10 @@ export interface ParkingSpotResponse {
   // Ver el comentario en la entidad: no-null implica que la estadía se cotiza con la
   // tarifa del vehículo del conductor, y pricePerDay/Week/Month de arriba son las más bajas.
   stayPricesByVehicleType: Partial<Record<VehicleType, StayRates>> | null;
+  // "Media estadía (12 h)" -- ver el comentario en la entidad. pricePerHalfDay es null
+  // cuando está apagada.
+  halfDayEnabled: boolean;
+  pricePerHalfDay: number | null;
   // "Pedir el vehículo al reservar" -- ver el comentario en la entidad.
   requireVehicle: boolean;
   covered: boolean;
@@ -132,6 +141,8 @@ const BASE_COLUMNS: Array<[string, string]> = [
   ['spot.stayAvailableUntil', 'stayAvailableUntil'],
   ['spot.maxStayDays', 'maxStayDays'],
   ['spot.stayPricesByVehicleType', 'stayPricesByVehicleType'],
+  ['spot.halfDayEnabled', 'halfDayEnabled'],
+  ['spot.pricePerHalfDay', 'pricePerHalfDay'],
   ['spot.requireVehicle', 'requireVehicle'],
   ['spot.covered', 'covered'],
   ['spot.vehicleTypes', 'vehicleTypes'],
@@ -209,6 +220,8 @@ function toResponse(
     stayAvailableUntil: toPlainDate(raw.stayAvailableUntil),
     maxStayDays: raw.maxStayDays === null || raw.maxStayDays === undefined ? null : Number(raw.maxStayDays),
     stayPricesByVehicleType: raw.stayPricesByVehicleType ?? null,
+    halfDayEnabled: raw.halfDayEnabled === true && raw.stayEnabled === true,
+    pricePerHalfDay: raw.halfDayEnabled === true && raw.stayEnabled === true ? parseNullableFloat(raw.pricePerHalfDay) : null,
     requireVehicle: raw.requireVehicle ?? false,
     covered: raw.covered,
     // Filas anteriores a este campo quedan null -- toda cochera era
@@ -229,6 +242,15 @@ function toResponse(
     rating: 0,
     reviewCount: 0,
     ...(distanceMeters !== undefined ? { distanceMeters: Math.round(distanceMeters) } : {}),
+  };
+}
+
+/** How a search compares prices: per day when it's for stays, at the driver's vehicle rate. */
+function searchPriceOptions(filters: SearchParkingSpotDto): PriceOptions {
+  return {
+    stays: filters.stayOnly === true || filters.stayFrom !== undefined,
+    halfDay: filters.halfDayOnly === true,
+    vehicleType: filters.vehicleType,
   };
 }
 
@@ -333,7 +355,7 @@ export class ParkingSpotsService {
    */
   async search(filters: SearchParkingSpotDto): Promise<ParkingSpotResponse[]> {
     const spots = await this.searchUnsorted(filters);
-    return sortSpots(spots, filters.sort, filters.stayOnly === true);
+    return sortSpots(spots, filters.sort, searchPriceOptions(filters));
   }
 
   private async searchUnsorted(filters: SearchParkingSpotDto): Promise<ParkingSpotResponse[]> {
@@ -356,27 +378,11 @@ export class ParkingSpotsService {
       });
     }
 
-    if (filters.maxPrice !== undefined) {
-      // Cuando el precio varía por tipo de vehículo, spot.pricePerHour es
-      // null (ver el comentario en la entidad) -- alcanza con que alguna
-      // tarifa del mapa esté dentro del máximo para no descartar la cochera.
-      query.andWhere(
-        `(
-          spot.pricePerHour <= :maxPrice
-          OR EXISTS (
-            SELECT 1 FROM jsonb_each_text(spot.pricePerHourByVehicleType) AS v(vehicle_type, price)
-            WHERE price::numeric <= :maxPrice
-          )
-        )`,
-        { maxPrice: filters.maxPrice },
-      );
-    }
-
     if (filters.covered !== undefined) {
       query.andWhere('spot.covered = :covered', { covered: filters.covered });
     }
 
-    if (filters.stayOnly) {
+    if (filters.stayOnly || filters.stayFrom !== undefined) {
       query.andWhere('spot.stayEnabled = true');
       // No mostrar cocheras cuya ventana de estadía ya venció -- ver el
       // comentario en ParkingSpot.stayAvailableUntil.
@@ -389,29 +395,50 @@ export class ParkingSpotsService {
 
     const raw = await query.getRawMany();
     const schedules = await this.scheduleForMany(raw.map((row) => row.id));
-    let spots = raw.map((row) => toResponse(row, schedules.get(row.id) ?? [], parseFloat(row.distanceM)));
+    const priceOptions = searchPriceOptions(filters);
+    let spots = raw
+      .map((row) => toResponse(row, schedules.get(row.id) ?? [], parseFloat(row.distanceM)))
+      .filter((spot) => fitsVehicle(spot, filters.vehicleType))
+      .filter((spot) => withinPriceRange(spot, filters.minPrice, filters.maxPrice, priceOptions));
     await this.applyRatings(spots);
+    spots = spots.filter((spot) => meetsRating(spot, filters.minRating));
 
-    if (filters.from === undefined || filters.to === undefined || spots.length === 0) {
-      return spots;
+    if (filters.halfDayOnly) {
+      if (filters.from !== undefined) {
+        // The block that starts then: offered, within the stay's dates, no closed day, and room.
+        const start = new Date(filters.from);
+        const end = new Date(start.getTime() + HALF_DAY_HOURS * 60 * 60 * 1000);
+        spots = await this.withRoomFor(spots.filter((spot) => halfDayRefusal(spot, start) === null), start, end);
+      } else {
+        spots = spots.filter((spot) => offersHalfDay(spot));
+      }
+    } else if (filters.from !== undefined && filters.to !== undefined) {
+      const start = new Date(filters.from);
+      const end = new Date(filters.to);
+      spots = await this.withRoomFor(spots.filter((spot) => openForHourly(spot, start, end)), start, end);
     }
-    // Un día que el dueño cerró a mano no aparece como disponible, aunque no tenga reservas.
-    const wantedStart = new Date(filters.from);
-    const wantedEnd = new Date(filters.to);
-    spots = spots.filter((spot) => !overlapsBlockedDates(spot.blockedDates, wantedStart, wantedEnd));
-    if (spots.length === 0) return spots;
+    if (filters.stayFrom !== undefined && filters.stayTo !== undefined) {
+      const { stayFrom, stayTo } = filters;
+      const { start, end } = stayWindow(stayFrom, stayTo);
+      spots = await this.withRoomFor(spots.filter((spot) => acceptsStay(spot, stayFrom, stayTo)), start, end);
+    }
+    return spots;
+  }
 
+  /** The spots that still have room for [start, end), per booking-service. */
+  private async withRoomFor(spots: ParkingSpotResponse[], start: Date, end: Date): Promise<ParkingSpotResponse[]> {
+    if (spots.length === 0 || start.getTime() >= end.getTime()) return [];
     try {
       const bookableIDs = new Set(
         await this.bookingClient.getBookableSpotIds(
           spots.map((spot) => ({ id: spot.id, capacity: spot.capacity })),
-          filters.from,
-          filters.to,
+          formatBuenosAires(start),
+          formatBuenosAires(end),
         ),
       );
       return spots.filter((spot) => bookableIDs.has(spot.id));
     } catch (error) {
-      // booking-service caído: mostramos la búsqueda sin el filtro de horario
+      // booking-service caído: mostramos la búsqueda sin el filtro de disponibilidad
       // en vez de romperla entera -- mejor resultados sin garantía de
       // disponibilidad que ningún resultado.
       this.logger.warn(`No se pudo filtrar por disponibilidad, booking-service no respondió: ${error}`);
@@ -499,6 +526,9 @@ export class ParkingSpotsService {
       stayAvailableFrom: dto.stayEnabled ? (dto.stayAvailableFrom ?? null) : null,
       stayAvailableUntil: dto.stayEnabled ? (dto.stayAvailableUntil ?? null) : null,
       stayPricesByVehicleType: dto.stayEnabled ? (dto.stayPricesByVehicleType ?? null) : null,
+      // Only within a stay; with prices by vehicle, validateStayCoherence fills in the lowest.
+      halfDayEnabled: dto.stayEnabled === true && dto.halfDayEnabled === true,
+      pricePerHalfDay: dto.stayEnabled === true && dto.halfDayEnabled === true ? (dto.pricePerHalfDay ?? null) : null,
       requireVehicle: dto.requireVehicle ?? false,
       covered: dto.covered ?? false,
       vehicleTypes: dto.vehicleTypes,
@@ -553,7 +583,10 @@ export class ParkingSpotsService {
     if (dto.accessInstructions !== undefined) spot.accessInstructions = dto.accessInstructions.trim() || null;
     if (dto.covered !== undefined) spot.covered = dto.covered;
     if (dto.vehicleTypes !== undefined) spot.vehicleTypes = dto.vehicleTypes;
-    if (dto.capacity !== undefined) spot.capacity = dto.capacity;
+    if (dto.capacity !== undefined) {
+      if (dto.capacity < spot.capacity) await this.assertCapacityCoversBookings(spot.id, dto.capacity);
+      spot.capacity = dto.capacity;
+    }
 
     if (dto.stayEnabled !== undefined) spot.stayEnabled = dto.stayEnabled;
     if (dto.pricePerDay !== undefined) spot.pricePerDay = dto.pricePerDay;
@@ -563,6 +596,11 @@ export class ParkingSpotsService {
     if (dto.stayAvailableFrom !== undefined) spot.stayAvailableFrom = dto.stayAvailableFrom;
     if (dto.stayAvailableUntil !== undefined) spot.stayAvailableUntil = dto.stayAvailableUntil;
     if (dto.stayPricesByVehicleType !== undefined) spot.stayPricesByVehicleType = dto.stayPricesByVehicleType;
+    if (dto.halfDayEnabled !== undefined) spot.halfDayEnabled = dto.halfDayEnabled;
+    if (dto.pricePerHalfDay !== undefined) spot.pricePerHalfDay = dto.pricePerHalfDay;
+    // The half-day is part of the stay: turning the stay off turns it off too.
+    if (!spot.stayEnabled) spot.halfDayEnabled = false;
+    if (!spot.halfDayEnabled) spot.pricePerHalfDay = null;
     if (dto.requireVehicle !== undefined) spot.requireVehicle = dto.requireVehicle;
     // A diferencia de create() (donde el DTO ya exige las 4 juntas vía
     // @ValidateIf), acá cada campo llega independiente en un PATCH parcial --
@@ -650,7 +688,23 @@ export class ParkingSpotsService {
       spot.pricePerDay = Math.min(...rates.map((rate) => rate.day));
       spot.pricePerWeek = Math.min(...rates.map((rate) => rate.week));
       spot.pricePerMonth = Math.min(...rates.map((rate) => rate.month));
+      if (spot.halfDayEnabled) {
+        // Every accepted vehicle needs its own 12-hour price, so any of them can book it.
+        for (const vehicleType of accepted) {
+          const halfDay = byVehicle[vehicleType]?.halfDay;
+          if (typeof halfDay !== 'number' || !(halfDay > 0)) {
+            throw new BadRequestException(
+              `Falta cargar stayPricesByVehicleType.${vehicleType}.halfDay (el precio de la media estadía).`,
+            );
+          }
+        }
+        spot.pricePerHalfDay = Math.min(...rates.map((rate) => rate.halfDay!));
+      }
     }
+    if (spot.halfDayEnabled && !(spot.pricePerHalfDay !== null && Number(spot.pricePerHalfDay) > 0)) {
+      throw new BadRequestException('Para ofrecer la media estadía hay que cargar pricePerHalfDay (el precio por 12 horas).');
+    }
+    if (!spot.halfDayEnabled) spot.pricePerHalfDay = null;
     if (
       spot.pricePerDay === null ||
       spot.pricePerWeek === null ||
@@ -773,6 +827,21 @@ export class ParkingSpotsService {
     spot.status = status;
     await this.parkingSpotRepo.save(spot);
     return this.findById(id);
+  }
+
+  /**
+   * Fewer places can't leave more bookings running at once than the spot would then hold: those
+   * drivers already paid for a place. Checked against every booking still ahead.
+   */
+  private async assertCapacityCoversBookings(spotId: string, capacity: number): Promise<void> {
+    const today = buenosAiresToday();
+    const farFuture = new Date(Date.now() + 5 * 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const most = maxConcurrentBookings(await this.bookingClient.getActiveBookings(spotId, today, farFuture));
+    if (most > capacity) {
+      throw new ConflictException(
+        `No podés bajar a ${capacity} ${capacity === 1 ? 'lugar' : 'lugares'}: hay ${most} reservas al mismo tiempo. Esperá a que terminen o cancelalas primero.`,
+      );
+    }
   }
 
   // Soft delete (mismo patrón que auth-service usa para cuentas): la fila
