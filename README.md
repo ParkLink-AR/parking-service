@@ -90,3 +90,38 @@ curl -X POST http://localhost:3001/parking-spots \
     "pricePerHour": 1500
   }'
 ```
+
+## Datos de demostración
+
+Con `SEED_DEMO_DATA=true`, al arrancar, tres servicios cargan datos de ejemplo para que la app se vea con uso real
+(cocheras con nombre, dirección, descripción, foto y reseñas). **Hay que definir la variable en el deploy de cada uno:
+auth-service, parking-service y booking-service.** Apagada por defecto, no corre nada.
+
+| Servicio | Qué carga |
+|---|---|
+| auth-service | 10 dueños y 60 conductores de ejemplo (`app/demo_seed.py`). No se puede entrar con ellos: la contraseña es un valor aleatorio que no se guarda. |
+| parking-service | Toma las cocheras marcadas con `[parklink-demo-spread]` (las que cargó el generador de datos demo) y les pone título, dirección, descripción, reglas, indicaciones de acceso, un dueño de ejemplo y una foto (`src/demo/`). Anota cada una en la tabla `demo_spots` y le saca la marca a la descripción. Expone la lista en `GET /internal/demo-spots` (solo entre servicios). |
+| booking-service | Pide esa lista y le agrega a cada cochera entre 20 y 50 reseñas de los conductores de ejemplo. Cada cochera recibe una reserva ya terminada y **sin pagar** de la que cuelgan las reseñas (una reseña necesita una reserva), así nunca genera cobros ni liquidaciones. Reintenta hasta 10 minutos si parking-service todavía no terminó. |
+
+Todo es idempotente: reiniciar no duplica nada. Lo que se genera depende solo del id de la cochera, así que es siempre lo mismo.
+El orden de arranque no importa.
+
+**Fotos.** Están en `assets/demo-photos/` (`covered-*` para cocheras cubiertas y `open-*` para descubiertas) y se suben al mismo
+almacenamiento R2 que las fotos reales, bajo `parking-spots/demo/`. Si R2 no está configurado, las cocheras se completan sin foto
+y la agregan en un arranque posterior. `DEMO_PHOTOS_BASE_URL` permite alojarlas en otro lado sin subirlas.
+
+**Ids compartidos.** Los dueños (`0e000000-0000-4000-8000-0000000000NN`, 1 a 10) y los conductores (`de000000-0000-4000-8000-0000000000NN`, 1 a 60)
+tienen ids fijos que repiten parking-service (`src/demo/demo-content.ts`), booking-service (`internal/domain/constants/demo.go`) y
+auth-service (`app/demo_seed.py`). Si cambia uno, hay que cambiar los otros.
+
+**Quitar los datos de ejemplo** (las cocheras conservan el contenido nuevo; el título original no se guarda):
+
+```sql
+-- booking-service
+DELETE FROM reviews  WHERE reviewer_id::text LIKE 'de000000-%';
+DELETE FROM bookings WHERE user_id::text     LIKE 'de000000-%';
+-- auth-service
+DELETE FROM users WHERE email LIKE '%@demo.parklink.com.ar';
+-- parking-service (para que una próxima carga las vuelva a tomar, hay que restaurar antes la marca de la descripción)
+DELETE FROM demo_spots;
+```

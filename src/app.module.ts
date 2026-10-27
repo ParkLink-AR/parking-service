@@ -7,6 +7,7 @@ import { GeocodingModule } from './geocoding/geocoding.module';
 import { FavoritesModule } from './favorites/favorites.module';
 import { DatabaseModule } from './database/database.module';
 import { StaysModule } from './stays/stays.module';
+import { DemoModule } from './demo/demo.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { StaysModule } from './stays/stays.module';
     GeocodingModule,
     FavoritesModule,
     StaysModule,
+    DemoModule,
   ],
 })
 export class AppModule {}
