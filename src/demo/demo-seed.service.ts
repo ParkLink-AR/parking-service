@@ -28,7 +28,7 @@ const PHOTO_KEY_PREFIX = 'parking-spots/demo';
  * repetirlas. Las reseñas de esas cocheras las agrega booking-service, que le pide a este servicio
  * la lista en `GET /internal/demo-spots`.
  *
- * Solo corre con SEED_DEMO_DATA=true y nunca frena el arranque si algo falla: en el próximo
+ * Corre por defecto (SEED_DEMO_DATA=false lo apaga) y nunca frena el arranque si algo falla: en el próximo
  * arranque retoma donde quedó (todo es idempotente).
  */
 @Injectable()
@@ -42,7 +42,8 @@ export class DemoSeedService implements OnApplicationBootstrap {
   ) {}
 
   onApplicationBootstrap(): void {
-    if (this.config.get<string>('SEED_DEMO_DATA') !== 'true') return;
+    // Activado salvo que se pida lo contrario (SEED_DEMO_DATA=false).
+    if (this.config.get<string>('SEED_DEMO_DATA') === 'false') return;
     // En segundo plano: la carga no debe demorar ni romper el arranque del servicio.
     void this.run().catch((error) => this.logger.error(`Demo seed falló: ${error?.message ?? error}`));
   }

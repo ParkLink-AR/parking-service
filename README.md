@@ -93,9 +93,9 @@ curl -X POST http://localhost:3001/parking-spots \
 
 ## Datos de demostración
 
-Con `SEED_DEMO_DATA=true`, al arrancar, tres servicios cargan datos de ejemplo para que la app se vea con uso real
-(cocheras con nombre, dirección, descripción, foto y reseñas). **Hay que definir la variable en el deploy de cada uno:
-auth-service, parking-service y booking-service.** Apagada por defecto, no corre nada.
+Al arrancar, tres servicios cargan datos de ejemplo para que la app se vea con uso real
+(cocheras con nombre, dirección, descripción, foto y reseñas). **Está activado por defecto en auth-service, parking-service y
+booking-service; `SEED_DEMO_DATA=false` en el deploy de cada uno lo apaga.**
 
 | Servicio | Qué carga |
 |---|---|

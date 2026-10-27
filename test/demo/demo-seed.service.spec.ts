@@ -139,10 +139,17 @@ describe('DemoSeedService', () => {
     expect(list[0]).toEqual({ id: expect.any(String), ownerId: DEMO_OWNER_IDS[0], pricePerHour: 7500 });
   });
 
-  it('solo corre al arrancar con SEED_DEMO_DATA=true', () => {
+  it('no corre al arrancar con SEED_DEMO_DATA=false', () => {
+    const data = fakeDataSource(spots());
+    serviceWith(data, { SEED_DEMO_DATA: 'false' }).onApplicationBootstrap();
+    expect(data.query).not.toHaveBeenCalled();
+  });
+
+  it('corre al arrancar si la variable no está definida', async () => {
     const data = fakeDataSource(spots());
     serviceWith(data).onApplicationBootstrap();
-    expect(data.query).not.toHaveBeenCalled();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(data.query).toHaveBeenCalled();
   });
 
   it('un fallo al arrancar no se propaga', async () => {
