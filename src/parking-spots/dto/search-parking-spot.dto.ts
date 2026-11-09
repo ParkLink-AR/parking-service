@@ -1,6 +1,6 @@
 import { Transform, Type } from 'class-transformer';
 import {
-  IsBoolean, IsIn, IsISO8601, IsLatitude, IsLongitude, IsNumber, IsOptional, Matches, Max, Min, ValidateIf,
+  IsBoolean, IsIn, IsInt, IsISO8601, IsLatitude, IsLongitude, IsNumber, IsOptional, Matches, Max, Min, ValidateIf,
 } from 'class-validator';
 import { SEARCH_SORTS, SearchSort } from '../search-sort';
 import { VEHICLE_TYPES, VehicleType } from '../vehicle-type';
@@ -66,6 +66,15 @@ export class SearchParkingSpotDto {
   @ValidateIf((dto: SearchParkingSpotDto) => dto.stayFrom !== undefined || dto.stayTo !== undefined)
   @Matches(PLAIN_DATE)
   stayTo?: string;
+
+  // The stay's check-in hour (0-23). Optional: with it, the room is checked for exactly the
+  // time the stay will occupy, and a check-in hour already gone today leaves nothing.
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(23)
+  stayHour?: number;
 
   @IsOptional()
   @Transform(({ value }) => value === 'true' || value === true)

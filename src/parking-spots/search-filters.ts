@@ -1,4 +1,4 @@
-import { addOneDay, buenosAiresMidnight, buenosAiresToday, datesInRange } from '../availability/buenos-aires-time';
+import { addOneDay, buenosAiresDateTime, buenosAiresMidnight, buenosAiresToday, datesInRange } from '../availability/buenos-aires-time';
 import { publishedWindowsForDay, ScheduleEntry } from '../availability/published-schedule';
 import { TimeWindow } from '../availability/interval-math';
 import { BlockedDateRange, overlapsBlockedDates } from './blocked-dates';
@@ -87,6 +87,14 @@ export function scheduleCovers(schedule: ScheduleEntry[], start: Date, end: Date
   );
 }
 
+/** How far past its start a time is still offered today (13:05 still lets you book 13:00), as in the app. */
+const PAST_START_TOLERANCE_MS = 10 * 60 * 1000;
+
+/** Whether an hourly booking starting at `start` is already too far gone to be made. */
+export function startsInThePast(start: Date, now: Date = new Date()): boolean {
+  return start.getTime() < now.getTime() - PAST_START_TOLERANCE_MS;
+}
+
 /** Whether an hourly booking for [start, end) would be accepted: hourly on, open, not closed by hand. */
 export function openForHourly(spot: FilterableSpot, start: Date, end: Date): boolean {
   return spot.hourlyEnabled && scheduleCovers(spot.schedule, start, end) && !overlapsBlockedDates(spot.blockedDates, start, end);
@@ -113,11 +121,13 @@ export function acceptsStay(spot: FilterableSpot, startDate: string, endDate: st
 }
 
 /**
- * The instants a stay search asks booking-service about. The check-in hour isn't chosen yet,
- * so it's the whole days from startDate to endDate (from now on, if it starts today) -- a
- * guide: the exact hour is checked again when it's quoted (StaysService.getQuote).
+ * The instants a stay search asks booking-service about (from now on, if it starts today).
+ * With the check-in hour it's exactly what the stay will occupy -- from that hour on
+ * startDate to the same hour on endDate, like StaysService.getQuote. Without it, the whole
+ * days from startDate to endDate: a guide, the exact hour is checked again when it's quoted.
  */
-export function stayWindow(startDate: string, endDate: string, now = new Date()): TimeWindow {
-  const start = buenosAiresMidnight(startDate);
-  return { start: start.getTime() > now.getTime() ? start : now, end: buenosAiresMidnight(endDate) };
+export function stayWindow(startDate: string, endDate: string, now = new Date(), startHour?: number): TimeWindow {
+  const start = startHour === undefined ? buenosAiresMidnight(startDate) : buenosAiresDateTime(startDate, startHour);
+  const end = startHour === undefined ? buenosAiresMidnight(endDate) : buenosAiresDateTime(endDate, startHour);
+  return { start: start.getTime() > now.getTime() ? start : now, end };
 }
