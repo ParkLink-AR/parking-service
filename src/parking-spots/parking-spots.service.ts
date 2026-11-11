@@ -5,7 +5,7 @@ import { ParkingSpot, ParkingSpotStatus } from './entities/parking-spot.entity';
 import { ParkingSpotSchedule } from './entities/parking-spot-schedule.entity';
 import { SearchParkingSpotDto } from './dto/search-parking-spot.dto';
 import {
-  acceptsStay, fitsVehicle, meetsRating, offersHalfDay, openForHourly, startsInThePast, stayWindow, withinPriceRange,
+  acceptsStay, fitsVehicle, meetsRating, offersHalfDay, openForHourly, stayWindow, withinPriceRange,
 } from './search-filters';
 import { HALF_DAY_HOURS, halfDayRefusal } from '../stays/half-day';
 import { CreateParkingSpotDto } from './dto/create-parking-spot.dto';
@@ -15,9 +15,7 @@ import { BookingClientService } from '../booking-client/booking-client.service';
 import { AuthClientService } from '../auth-client/auth-client.service';
 import { EventsService } from '../events/events.service';
 import { StayRates, VehicleType, VEHICLE_TYPES } from './vehicle-type';
-import {
-  addOneDay, buenosAiresDateTime, buenosAiresToday, formatBuenosAires, isPastCheckIn,
-} from '../availability/buenos-aires-time';
+import { addOneDay, buenosAiresToday, formatBuenosAires } from '../availability/buenos-aires-time';
 import { BlockedDateRange, overlapsBlockedDates, upcomingBlockedDates } from './blocked-dates';
 import { maxConcurrentBookings } from '../availability/interval-math';
 import { PriceOptions, sortSpots } from './search-sort';
@@ -417,19 +415,12 @@ export class ParkingSpotsService {
     } else if (filters.from !== undefined && filters.to !== undefined) {
       const start = new Date(filters.from);
       const end = new Date(filters.to);
-      // A time that's already gone can't be booked: nothing is free then.
-      spots = startsInThePast(start)
-        ? []
-        : await this.withRoomFor(spots.filter((spot) => openForHourly(spot, start, end)), start, end);
+      spots = await this.withRoomFor(spots.filter((spot) => openForHourly(spot, start, end)), start, end);
     }
     if (filters.stayFrom !== undefined && filters.stayTo !== undefined) {
-      const { stayFrom, stayTo, stayHour } = filters;
-      if (stayHour !== undefined && isPastCheckIn(buenosAiresDateTime(stayFrom, stayHour))) {
-        spots = [];
-      } else {
-        const { start, end } = stayWindow(stayFrom, stayTo, new Date(), stayHour);
-        spots = await this.withRoomFor(spots.filter((spot) => acceptsStay(spot, stayFrom, stayTo)), start, end);
-      }
+      const { stayFrom, stayTo } = filters;
+      const { start, end } = stayWindow(stayFrom, stayTo);
+      spots = await this.withRoomFor(spots.filter((spot) => acceptsStay(spot, stayFrom, stayTo)), start, end);
     }
     return spots;
   }

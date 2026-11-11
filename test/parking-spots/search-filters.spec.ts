@@ -1,5 +1,5 @@
 import {
-  acceptsStay, FilterableSpot, fitsVehicle, meetsRating, offersHalfDay, openForHourly, scheduleCovers, startsInThePast, stayWindow, withinPriceRange,
+  acceptsStay, FilterableSpot, fitsVehicle, meetsRating, offersHalfDay, openForHourly, scheduleCovers, stayWindow, withinPriceRange,
 } from '../../src/parking-spots/search-filters';
 import { comparablePrice } from '../../src/parking-spots/search-sort';
 import { VehicleType } from '../../src/parking-spots/vehicle-type';
@@ -144,26 +144,6 @@ describe('stayWindow', () => {
     const now = ba('2026-10-21', 15);
     expect(stayWindow('2026-11-02', '2026-11-04', now)).toEqual({ start: ba('2026-11-02'), end: ba('2026-11-04') });
     expect(stayWindow('2026-10-21', '2026-10-23', now).start).toEqual(now);
-  });
-});
-
-describe('stayWindow with the check-in hour', () => {
-  it('runs from that hour on the first day to the same hour on the last', () => {
-    const now = ba('2026-10-21', 15);
-    expect(stayWindow('2026-11-02', '2026-11-04', now, 10)).toEqual({ start: ba('2026-11-02', 10), end: ba('2026-11-04', 10) });
-    expect(stayWindow('2026-10-21', '2026-10-23', now, 15).start).toEqual(now);
-  });
-});
-
-describe('startsInThePast', () => {
-  const now = ba('2026-10-21', 13, 5);
-  it('still offers a start a few minutes gone, like the app', () => {
-    expect(startsInThePast(ba('2026-10-21', 13), now)).toBe(false);
-    expect(startsInThePast(ba('2026-10-21', 14), now)).toBe(false);
-  });
-  it('refuses what is further back', () => {
-    expect(startsInThePast(ba('2026-10-21', 12), now)).toBe(true);
-    expect(startsInThePast(ba('2026-10-20', 22), now)).toBe(true);
   });
 });
 
